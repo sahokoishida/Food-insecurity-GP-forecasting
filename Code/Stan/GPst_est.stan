@@ -40,7 +40,7 @@ model{
     }
     {
       matrix[N2, N2] K2 = Gram_SE(T, N2, rho2);
-      K1 = Gram_centring(K2, N2);
+      K2 = Gram_centring(K2, N2);
       {
         matrix[N2, N2+1] R = cen_eigen_decompose(K2, N2);
         Q2 = R[1:N2, 1:N2] ;
