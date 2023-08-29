@@ -1,3 +1,5 @@
+/* functions related to eigendecomposition of centered Gram matrix */
+
 int n_zero_eval(vector eval, int n){
   // count number of zero eigen values (smaller than threshold)
   // Input: eval - a vector of eigenvalues
@@ -5,7 +7,7 @@ int n_zero_eval(vector eval, int n){
   // Output: number of zero eigen values
   real d = eval[1];
   int i = 1 ;
-  while (d < 1e-9){
+  while (d < 1e-10){
       i += 1 ;
       d = eval[i];
   }
@@ -65,7 +67,13 @@ matrix cen_eigen_decompose(matrix K, int N){
   }
   return R ;
 }
-
+/* Kernel related functions */
+// Gram matrix for different kernels
+real kernel_SE(vector x, vector y, real sq_rho){
+  // Output k(x,y) = cov(f(x), f(y)) where k is s.e. kernel
+  // Input: x, y, and the length scale (rho) of s.e. kernel
+  return exp(-squared_distance(x,y)/(2*sq_rho));
+}
 matrix Gram_SE(matrix X, int N, real rho){
   // Output: n by n Gram matrix with squared exponential kernel
   // Input: X - predictor
@@ -75,8 +83,7 @@ matrix Gram_SE(matrix X, int N, real rho){
   real sq_rho = square(rho);
   for (i in 1:(N-1)){
     for (j in (i+1):N){
-      real r2 = squared_distance(X[i,],X[j,]);
-      K[i,j] = exp(-r2/(2*sq_rho));
+      K[i,j] = kernel_SE(to_vector(X[i,]),to_vector(X[j,]),sq_rho);
       K[j,i] = K[i,j];
     }
   }
@@ -105,7 +112,6 @@ matrix Gram_fBM(matrix X, int N, real Hurst){
   d[N] = pow(fabs(dvec[N]), Hurst);
   E = rep_matrix(d, N);
   K = 0.5 * (E + E' - B);
-  //K = A * K * A;
   return K ;
 }
 
@@ -117,7 +123,10 @@ matrix Gram_fBM_sq_cen(matrix X, int N, real Hurst){
   matrix[N, N] K = Gram_fBM(X, N, Hurst);
   matrix[N, N] A = diag_matrix(rep_vector(1,N)) - (1.0/N)*rep_matrix(1, N, N);
   K = A * K * A;
-  return K * K ;
+  K =  K * K;
+  // to ensure that it's symmetric
+  K = 0.5 *(K + K');
+  return K;
 }
 
 matrix Gram_centring(matrix K, int N){
@@ -128,11 +137,13 @@ matrix Gram_centring(matrix K, int N){
     return A * K * A ;
 }
 
-matrix Gram_square(matrix K){
+matrix Gram_square(matrix K, int N){
     // Output: squared Gram matrix
     // Input: K -  Gram matrix
     //        N - nrow of K
-        return K * K ;
+    matrix[N,N] Ksq = K * K ;
+    Ksq = 0.5 *(Ksq + Ksq');
+    return Ksq;
 }
 
 vector kvec_SE(matrix X, vector x_tes, int N, real rho){
@@ -145,43 +156,38 @@ vector kvec_SE(matrix X, vector x_tes, int N, real rho){
   vector[N] kvec ;
   real sq_rho = square(rho);
   for (i in 1:N){
-    real r2 = squared_distance(x_tes, X[i,]) ;
-    kvec[i] = exp(-r2/(2*sq_rho));
+    kvec[i] = kernel_SE(x_tes, to_vector(X[i,]), sq_rho);
   }
   return kvec ;
 }
 
-
-real kstar_SE(vector x_tes, real rho){
-  real r2 = squared_distance(X[i,],X[j,]);
-  return exp(-r2/(2*square(rho)));
+vector kvec_fBM(matrix X, vector x_new, int N, real Hurst){
+  // Output: a vector of k(x*, x_1),...,k(x*, x_N) for a given test point x*
+  //          with fBM kernel
+  // Input: X - (traing) predictor
+  //        x_tes - test point
+  //        N - n_rows of X
+  //        Hurst - hurst coefficeint of fBM kernel
+  vector[N] kvec ;
+  real t1 = pow(dot_self(x_new), Hurst) ;
+  vector[N] t2 ;
+  vector[N] t12 ;
+  for (i in 1:N){
+    t12[i] = pow(squared_distance(x_new,X[i,]), Hurst);
+    t2[i] = pow(dot_self(X[i,]), Hurst);
+  }
+  kvec = 0.5*(rep_vector(t1,N) + t2 - t12) ;
+  return kvec ;
 }
 
-vector kvec_SE_cen(matrix X, vector x_tes, matrix K, int N, real rho){
-  // Output: the same as kvec_SE but centred version
-  // Input Additional to kvec_SE, the uncentred Gram matrix is needed
-  vector[N] k1 = kvec_SE(X, x_tes, N, rho);
-  real      k2 = sum(k1);
-  vector[N] k3 = K * rep_vector(1,N) ; //rowsum
-  real      k4 = sum(k3);
-
-  return (k1 - rep_vector(k2/N, N) - (1.0/N)*k3 + rep_vector(k4/square(N), N));
-}
-/*
-vector kvec_cen(vector kvec, vector x_tes, matrix K, int N){
-
-  vector[N] k1 = kvec;
-  real      k2 = sum(k1);
-  vector[N] k3 = K * rep_vector(1,N) ; //rowsum
-  real      k4 = sum(k3);
-
-  return (k1 - rep_vector(k2/N, N) - (1.0/N)*k3 + rep_vector(k4/square(N), N));
-}
-*/
-vector kvec_cen(vector kvec, vector Krsum, real Ksum, int N){
-  return kvec - rep(sum(k1)/N, N) -(1.0/N)*Krsum + rep_vector(Ksum/square(N), N);
+vector kvec_cen(vector kvec, vector Krowsum, int N){
+  return kvec - rep_vector(sum(kvec)/N, N) -(1.0/N)*Krowsum + rep_vector(sum(Krowsum)/square(N), N);
 }
 
-real kstar_cen(real kstar,vector kvec, real Ksum,int N){
-  return kstar - 2*sum(kvec)/N + Ksum/square(N) ;
+vector kvec_sq(vector kvec, matrix K){
+  return K * kvec ;
+}
+
+real kstar_cen(real kstar,vector kvec, vector Krowsum,int N){
+  return kstar - 2*sum(kvec)/N + sum(Krowsum)/square(N) ;
 }
