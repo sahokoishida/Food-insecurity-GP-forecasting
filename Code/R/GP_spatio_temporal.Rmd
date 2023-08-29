@@ -1,0 +1,175 @@
+---
+title: "GP_spatio_temporal"
+author: "Sahoko"
+date: "8/23/2023"
+output: html_document
+---
+This is an R notebook for running Stan code for spatio-temporal model for food security forecasting. Check out [this page](https://mc-stan.org/cmdstanr/) to install `cmdstan`.
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Setup
+Load libraries and set up paths
+```{r}
+library(cmdstanr)
+library(rstan)
+library(ggmcmc)
+```
+
+```{r}
+base_path = '/Users/sahoko/GitHub/Food-insecurity-GP-forecasting/'
+stan_path = paste0(base_path, 'Code/Stan/')
+data_path = paste0(base_path, 'Data/Foini2023/')
+```
+## Read and prepare data
+Read data
+```{r}
+country_list = list.files(path = paste0(data_path,'output_data/'))
+print(country_list)
+# select country
+country = country_list[4]
+print(country)
+file = paste0(data_path,'output_data/', country,'/',country,'-long.csv')
+df = read.csv(file, header = TRUE)
+file = paste0(data_path,'output_data/', country,'/',country,'-location.csv')
+df_loc = read.csv(file, header = TRUE)
+```
+Prepare data
+```{r}
+N1 = dim(df_loc)[1]
+N2 = dim(df)[1]/N1
+X1 = df_loc[,c('Easting','Northing')]/10000
+X2 = matrix(1:N2, N2,1)
+y = df$FCG
+z = log(y/(100-y))
+```
+Split data
+```{r}
+set.seed(2836)
+Z = matrix(z, N2, N1)
+N2_tr = round(N2*0.7, 0)
+N2_tes = N2 - N2_tr
+idx_tr = sort(sample(1:N2, N2_tr))
+X2_tr = matrix(X2[idx_tr,],N2_tr,1)
+X2_tes = matrix(X2[-idx_tr,],N2_tes,1)
+Z_tr = Z[idx_tr,]
+Z_tes = Z[-idx_tr,]
+z_tr = c(Z_tr); z_tes = c(Z_tes)
+```
+
+```{r}
+Y =  matrix(y, N2, N1)
+Y_tes = Y[-idx_tr,]
+y_tes = c(Y_tes)
+```
+
+## Stan 
+Compile Stan code
+```{r}
+stan_file = paste0(stan_path,'GPst_est_sqcenfBM.stan')
+mod = cmdstan_model(stan_file,  include_paths = stan_path)
+#mod$code()
+```
+Prepare data
+```{r}
+# for fBM kernel
+data = list(N1 = N1, N2 = N2_tr, X1 = X1, X2 = (X2_tr), y = z_tr, Hurst1 = 0.5, Hurst2 = 0.5)
+# for SE kernel
+#data = list(N1 = N1, N2 = N2_tr, X1 = X1, X2 = c(X2_tr), y = z_tr)
+```
+MCMC sampling
+```{r}
+fit = mod$sample(
+  data = data, 
+  #seed = 725, 
+  seed = 3283,
+  iter_warmup = 200,
+  iter_sampling = 300,
+  save_warmup = TRUE,
+  chains = 2, 
+  parallel_chains = 2,
+  refresh = 100
+)
+```
+
+```{r}
+fit$summary(variables = c('alpha0','alpha1','alpha2','sigma','lp__'))
+post_mean= fit$summary(variables = c('alpha0','alpha1','alpha2','sigma'))$mean
+#fit$summary(variables = c('alpha0','alpha1','alpha2','rho1','rho2','sigma','lp__'))
+#post_mean= fit$summary(variables = c('alpha0','alpha1','alpha2','rho1','rho2','sigma'))$mean
+```
+
+```{r}
+post_samples = fit$draws(format = "df",  inc_warmup = F)
+post_samples$chain = as.character(post_samples$.chain)
+gg = ggplot(data=post_samples, aes(x=.iteration, y = sigma, color=chain))+
+  geom_line() + theme_minimal() 
+gg
+```
+
+Optimsation
+```{r}
+res_optim = mod$optimize(data = data, seed=123)
+res_optim$summary()
+```
+```{r}
+res_optim = mod$optimize(data = data, seed=123)
+res_optim$summary()
+```
+
+### prediction
+```{r}
+stan_file = paste0(stan_path,'GPst_pred_sqcenfBM.stan')
+modpred = cmdstan_model(stan_file,  include_paths = stan_path)
+```
+
+```{r}
+data = list(N1 = N1, N2 = N2_tr,
+            X1 = X1, X2 = X2_tr, y = z_tr, 
+            Hurst1 = 0.5, Hurst2 = 0.5,
+            n1 = N1, n2 = N2_tes, 
+            x1_new = X1,  x2_new = X2_tes,
+            alpha0 = post_mean[1], alpha1 = post_mean[2], alpha2 = post_mean[3], sigma = post_mean[4]
+            )
+pred = modpred$sample(
+  data = data, 
+  iter_warmup = 0,
+  iter_sampling = 1,
+  chains = 1, 
+  refresh = 1,
+  fixed_param = TRUE
+)
+#pred$save_output_files(dir = paste0(path0,"/Output"), basename = NULL, timestamp = TRUE, random = TRUE)
+predfit = rstan::read_stan_csv(pred$output_files()) # changing to stanfit object 
+colMeans(as.matrix(predfit, pars = c('mu12')))[1:10]
+
+```
+
+```{r}
+n_terms = 4 # change here depending on the model, we have n_term = 8 for saturated model
+cnames = c('const','space','time','space_time')
+params = c('mu0','mu1','mu2','mu12')
+f_mean = as.data.frame(matrix(NA, N1*N2_tes,n_terms))
+colnames(f_mean) = cnames[1:n_terms]
+#main terms
+f_mean$const = rep(colMeans(as.matrix(predfit, pars = c(params[1]))), times=(N1*N2_tes))
+f_mean$space = rep(colMeans(as.matrix(predfit, pars = c(params[2]))), each=N2_tes)
+f_mean$time = rep(colMeans(as.matrix(predfit, pars = c(params[3]))), times=N1)
+# two way int
+f_mean$space_time = colMeans(as.matrix(predfit, pars = c(params[4])))
+# all
+f_mean$pred_z = rowSums(f_mean)
+f_mean$pred_y = 100/(1+exp(-f_mean$pred_z))
+#
+f_mean$true_z= z_tes
+f_mean$residual_z = f_mean$pred_z - f_mean$true_z
+f_mean$true_y = y_tes
+f_mean$residual_y = f_mean$pred_y - f_mean$true_y
+# MSE
+cat('MSE for', country, ':', mean((f_mean$residual_y)^2),'\n')
+# MAE
+cat('MAE for', country, ':', mean(sqrt((f_mean$residual_y)^2)),'\n')
+f_mean$region = rep(df_loc$region, each = N2_tes)
+f_mean$time = rep(as.POSIXct(df$Datetime[1:N2][-idx_tr], tz='GMT'), times=N1)
+```
+
