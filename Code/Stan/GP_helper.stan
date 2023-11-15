@@ -7,7 +7,7 @@ int n_zero_eval(vector eval, int n){
   // Output: number of zero eigen values
   real d = eval[1];
   int i = 1 ;
-  while (d < 1e-10){
+  while (d < 1e-7){
       i += 1 ;
       d = eval[i];
   }
@@ -69,10 +69,16 @@ matrix cen_eigen_decompose(matrix K, int N){
 }
 /* Kernel related functions */
 // Gram matrix for different kernels
-real kernel_SE(vector x, vector y, real sq_rho){
+real kernel_SE(vector x, vector y, real rho){
   // Output k(x,y) = cov(f(x), f(y)) where k is s.e. kernel
   // Input: x, y, and the length scale (rho) of s.e. kernel
-  return exp(-squared_distance(x,y)/(2*sq_rho));
+
+  return exp(-squared_distance(x,y)/(2*square(rho)));
+}
+real kernel_exponential(vector x, vector y, real rho){
+  // Output k(x,y) = cov(f(x), f(y)) where k is exponential kernel
+  // Input: x, y, and the length scale (rho) of exponential kernel
+  return exp(-distance(x,y)/(rho));
 }
 matrix Gram_SE(matrix X, int N, real rho){
   // Output: n by n Gram matrix with squared exponential kernel
@@ -80,10 +86,24 @@ matrix Gram_SE(matrix X, int N, real rho){
   //        n - n_rows of X
   //        rho - length scale of s.e. kernel
   matrix[N,N] K = diag_matrix(rep_vector(1,N));
-  real sq_rho = square(rho);
   for (i in 1:(N-1)){
     for (j in (i+1):N){
-      K[i,j] = kernel_SE(to_vector(X[i,]),to_vector(X[j,]),sq_rho);
+      K[i,j] = kernel_SE(to_vector(X[i,]),to_vector(X[j,]),rho);
+      K[j,i] = K[i,j];
+    }
+  }
+  return K ;
+}
+
+matrix Gram_exponential(matrix X, int N, real rho){
+  // Output: n by n Gram matrix with exponential kernel
+  // Input: X - predictor
+  //        n - n_rows of X
+  //        rho - length scale of exponential kernel
+  matrix[N,N] K = diag_matrix(rep_vector(1,N));
+  for (i in 1:(N-1)){
+    for (j in (i+1):N){
+      K[i,j] = kernel_exponential(to_vector(X[i,]),to_vector(X[j,]),rho);
       K[j,i] = K[i,j];
     }
   }
@@ -154,9 +174,21 @@ vector kvec_SE(matrix X, vector x_tes, int N, real rho){
   //        N - n_rows of X
   //        rho - length scale of s.e. kernel
   vector[N] kvec ;
-  real sq_rho = square(rho);
   for (i in 1:N){
-    kvec[i] = kernel_SE(x_tes, to_vector(X[i,]), sq_rho);
+    kvec[i] = kernel_SE(x_tes, to_vector(X[i,]), rho);
+  }
+  return kvec ;
+}
+vector kvec_exponential(matrix X, vector x_tes, int N, real rho){
+  // Output: a vector of k(x*, x_1),...,k(x*, x_N) for a given test point x*
+  //          with exponential kernel
+  // Input: X - (traing) predictor
+  //        x_tes - test point
+  //        N - n_rows of X
+  //        rho - length scale of the kernel
+  vector[N] kvec ;
+  for (i in 1:N){
+    kvec[i] = kernel_exponential(x_tes, to_vector(X[i,]), rho);
   }
   return kvec ;
 }
@@ -190,4 +222,30 @@ vector kvec_sq(vector kvec, matrix K){
 
 real kstar_cen(real kstar,vector kvec, vector Krowsum,int N){
   return kstar - 2*sum(kvec)/N + sum(Krowsum)/square(N) ;
+}
+
+matrix kronecker_prod(matrix A, matrix B) {
+  matrix[rows(A) * rows(B), cols(A) * cols(B)] C;
+  int m;
+  int n;
+  int p;
+  int q;
+  m = rows(A);
+  n = cols(A);
+  p = rows(B);
+  q = cols(B);
+  for (i in 1:m) {
+    for (j in 1:n) {
+      int row_start;
+      int row_end;
+      int col_start;
+      int col_end;
+      row_start = (i - 1) * p + 1;
+      row_end = (i - 1) * p + p;
+      col_start = (j - 1) * q + 1;
+      col_end = (j - 1) * q + q;
+      C[row_start:row_end, col_start:col_end] = A[i, j] * B;
+    }
+  }
+  return C;
 }
