@@ -12,7 +12,6 @@ knitr::opts_chunk$set(echo = TRUE)
 Load libraries and set up paths
 ```{r}
 library(cmdstanr)
-#library(rstan)
 library(ggmcmc)
 ```
 
@@ -33,12 +32,22 @@ file = paste0(data_path,'output_data/', country,'/',country,'-long.csv')
 df = read.csv(file, header = TRUE)
 file = paste0(data_path,'output_data/', country,'/',country,'-location.csv')
 df_loc = read.csv(file, header = TRUE)
-df$Datetime = as.POSIXct(df$Datetime, tz='GMT')
+df$Datetime = as.Date(df$Datetime, tz='GMT')
 colnames(df)[colnames(df)=='FCG'] = 'FCS'
 region_list = df_loc$region
 ```
+Take the last 6 + 1 months
+```{r}
+endday = df$Datetime[length(df$Datetime)]
+startday = seq(endday, length = 2, by = "-7 months")[2]+1
+df = df[df$Datetime>=startday & df$Datetime<=endday,]
+```
 
-Prepare data
+```{r}
+gg = ggplot(df, aes(x=Datetime, y=FCS, color=region)) + geom_line()
+gg
+```
+
 ```{r}
 N1 = dim(df_loc)[1]
 N2 = dim(df)[1]/N1
@@ -49,87 +58,47 @@ z = log(y/(100-y))
 Y = matrix(y, N2, N1)
 Z = matrix(z, N2, N1)
 ```
-Divide to training - test data
+Divide to training - test set
 ```{r}
-k = 5
-h = 30
-ix = 1:(N2-h)
-n_train = floor((N2-h)/k)
-X2_tr = z_tr = y_tr = ix_tr = vector(mode = 'list', length = k)
-X2_tes = z_tes = y_tes =ix_tes = vector(mode = 'list', length = k)
-
-for (i in 1:k){
-  if (i!=k){
-    #ix_tr[[i]] = ((i-1)*n_train + 1):(i*n_train)
-    ix_tr[[i]] = 1:(i*n_train)
-    ix_tes[[i]] = (i*n_train+1):(i*n_train + h)
-  } else {
-    #ix_tr[[i]] = ((i-1)*n_train + 1):(N2-h)
-    ix_tr[[i]] = 1:(N2-h)
-    ix_tes[[i]] = (N2-h + 1):N2
-  }
-  X2_tr[[i]] = matrix(ix_tr[[i]], length(ix_tr[[i]]), 1)
-  X2_tes[[i]] = matrix(ix_tes[[i]], h, 1) 
-  z_tr[[i]] = c(Z[ix_tr[[i]],])
-  z_tes[[i]] = c(Z[ix_tes[[i]],])
-  y_tr[[i]] = c(Y[ix_tr[[i]],])
-  y_tes[[i]] = c(Y[ix_tes[[i]],])
-}
+tr_endday = seq(endday, length = 2, by = "-1 month")[2]
+tes_startday = tr_endday+1
+ix_tr  = 1:which(df$Datetime[1:N2]==tr_endday)
+ix_tes = which(df$Datetime[1:N2]==tes_startday):which(df$Datetime[1:N2]==endday)
+X2_tr  = matrix(ix_tr, length(ix_tr), 1)
+X2_tes = matrix(ix_tes, length(ix_tes), 1)
+z_tr = c(Z[ix_tr,])
+z_tes = c(Z[ix_tes,])
+y_tr = c(Y[ix_tr,])
+y_tes = c(Y[ix_tes,])
 ```
-
 ## Stan 
 Compile Stan code
 ```{r}
-stan_file = paste0(stan_path,'GPst_est_sqcenfBM.stan') #Using square & centred Brownian motion kernel (similar property to cubic spline)
 stan_file = paste0(stan_path,'GPst_est.stan') # Using SE kernel
 mod = cmdstan_model(stan_file,  include_paths = stan_path)
-stan_file_pred = paste0(stan_path,'GPst_pred_sqcenfBM.stan')
 stan_file_pred = paste0(stan_path,'GPst_pred.stan')
 modpred = cmdstan_model(stan_file_pred,  include_paths = stan_path)
-params = c('alpha0','alpha1','alpha2','sigma') #BM kernel
-params = c('alpha0','alpha1','alpha2','rho1','rho2','sigma') #SE kernels
-```
-MCMC sampling for BM kernel
-```{r}
-for (i in 1:k){
-  data = list(N1 = N1, N2 = length(ix_tr[[i]]), X1 = X1, X2 = X2_tr[[i]], y = z_tr[[i]], Hurst1 = 0.5, Hurst2 = 0.5)
-  fit = mod$sample(
-  data = data, 
-  #seed = 725, 
-  #seed = 3283,
-  seed = 121,
-  iter_warmup = 200,
-  iter_sampling = 300,
-  save_warmup = TRUE,
-  chains = 2, 
-  parallel_chains = 2,
-  refresh = 50
-  )
-  fit$save_output_files(dir = paste0(base_path,"Output"), basename = paste0('fcst_training_bm_', as.character(i), '_' ,country), timestamp = TRUE, random = TRUE)
-}
+params = c('alpha0','alpha1','alpha2','rho1','rho2','sigma') #SE / exponential / Matern kernels
 ```
 MCMC sampling for SE kernel
 ```{r}
-for (i in 1:k){
-  data = list(N1 = N1, N2 = length(ix_tr[[i]]), X1 = X1, X2 = c(X2_tr[[i]]), y = z_tr[[i]])
-  fit = mod$sample(
+data = list(N1 = N1, N2 = length(ix_tr), X1 = X1, X2 = c(X2_tr), y = z_tr)
+fit = mod$sample(
   data = data, 
-  #seed = 725, 
-  #seed = 3283,
-  seed = 121,
+  seed = 311,
   iter_warmup = 200,
   iter_sampling = 300,
   save_warmup = TRUE,
   chains = 2, 
   parallel_chains = 2,
-  refresh = 50
+  refresh = 10
   )
-  fit$save_output_files(dir = paste0(base_path,"Output"), basename = paste0('fcst_training_se_', as.character(i), '_' ,country), timestamp = TRUE, random = TRUE)
-}
+fit$save_output_files(dir = paste0(base_path,"Output"), basename = paste0('fcst_mcmc_se_',country), timestamp = TRUE, random = TRUE)
 ```
 
 ```{r}
 post_mean = fit$summary(variables = params)$mean
+names(post_mean) = params
 fit$summary(variables = append(params, 'lp__'))
 ```
 
@@ -142,132 +111,140 @@ for (i in 1:length(params)){
   print(gg)
 }
 ```
-Optimsation for BM kernel
-```{r}
-RMSE = MAE = rep(NA,k)
-for (i in 1:1){
-  N2_tes = length(ix_tes[[i]])
-  N2_tr = length(ix_tr[[i]])
-  data = list(N1 = N1, N2 = length(ix_tr[[i]]), X1 = X1, X2 = X2_tr[[i]], y = z_tr[[i]], Hurst1 = 0.5, Hurst2 = 0.5)
-  fit_optim = mod$optimize(data = data, seed=763)
-  post_mean = fit_optim$summary(variables = params)$estimate
-  data_pred = list(N1 = N1, N2 = length(ix_tr[[i]]),
-            X1 = X1, X2 = X2_tr[[i]], y = z_tr[[i]], 
-            n1 = N1, n2 = N2_tes,
-            x1_new = X1,  x2_new = X2_tes[[i]],
-            Hurst1 = 0.5, Hurst2 = 0.5,
-            alpha0 = fit_optim$summary(variables = 'alpha0')$estimate, alpha1 = fit_optim$summary(variables = 'alpha1')$estimate, 
-            alpha2 = fit_optim$summary(variables = 'alpha2')$estimate, 
-            sigma = fit_optim$summary(variables = 'sigma')$estimate
-            )
-  pred = modpred$sample(
-  data = data_pred, 
-  iter_warmup = 0,
-  iter_sampling = 1,
-  chains = 1, 
-  refresh = 1,
-  fixed_param = TRUE)
-  predfit = rstan::read_stan_csv(pred$output_files())
-  #pred$save_output_files(dir = paste0(base_path,"Output"), basename = paste0('fcst_bm_',as.character(i), '_',country), timestamp = TRUE, random = TRUE)
-  ######
-  # Extracting result
-  n_terms = 4 # change here depending on the model
-  cnames = c('const','space','time','space_time')
-  terms = c('mu0','mu1','mu2','mu12')
-  df_pred = as.data.frame(matrix(NA, N1*N2_tes,n_terms))
-  colnames(df_pred) = cnames[1:n_terms]
-  #main terms
-  df_pred$const = rep(colMeans(as.matrix(predfit, pars = c(terms[1]))), times=(N1*N2_tes))
-  df_pred$space = rep(colMeans(as.matrix(predfit, pars = c(terms[2]))), each=N2_tes)
-  df_pred$time = rep(colMeans(as.matrix(predfit, pars = c(terms[3]))), times=N1)
-  # two way int
-  df_pred$space_time = colMeans(as.matrix(predfit, pars = c(terms[4])))
-  ######
-  dz_hat = rowSums(df_pred)
-  df_pred$y_hat = 100/(1+exp(-z_hat))
-  df_pred$y_true = y_tes[[i]]
-  df_pred$y_residual = df_pred$y_hat - df_pred$y_true
-  df_pred$region = rep(df_loc$region, each = N2_tes)
-  df_pred$Datetime = rep(as.POSIXct(df$Datetime[1:N2][ix_tes[[i]]], tz='GMT'), times=N1)
-  RMSE[i] = sqrt(mean((df_pred$y_residual)^2))
-  MAE[i] = mean(sqrt((df_pred$y_residual)^2))
-  cat('RMSE for', country, ':', RMSE[i],'\n')
-  cat('MAE for', country, ':', MAE[i],'\n')
-  write.csv(df_pred,paste0(base_path,'Output/cv_fcst_bm_',as.character(i), '_', country,'.csv'))
-}
-```
-
-Optimsation for SE kernel
+Using stan optimsation with SE kernel
 ```{r}
 RMSE = c(); MAE = c()
-for (i in 1:k){
-  N2_tes = length(ix_tes[[i]])
-  N2_tr = length(ix_tr[[i]])
-  data = list(N1 = N1, N2 = N2_tr, X1 = X1, X2 = c(X2_tr[[i]]), y = z_tr[[i]])
-  fit_optim = mod$optimize(data = data, seed=123)
-  post_mean = fit_optim$summary(variables = params)$estimate
-  data_pred = list(N1 = N1, N2 = N2_tr,
-            X1 = X1, X2 = X2_tr[[i]], y = z_tr[[i]], 
-            n1 = N1, n2 = N2_tes,
-            x1_new = X1,  x2_new = X2_tes[[i]],
-            alpha0 = fit_optim$summary(variables = 'alpha0')$estimate, alpha1 = fit_optim$summary(variables = 'alpha1')$estimate, 
-            alpha2 = fit_optim$summary(variables = 'alpha2')$estimate, 
-            rho1 = fit_optim$summary(variables = 'rho1')$estimate, rho2 = fit_optim$summary(variables = 'rho2')$estimate, 
-            sigma = fit_optim$summary(variables = 'sigma')$estimate
-            )
-  pred = modpred$sample(
-  data = data_pred, 
-  iter_warmup = 0,
-  iter_sampling = 1,
-  chains = 1, 
-  refresh = 1,
-  fixed_param = TRUE)
-  predfit = rstan::read_stan_csv(pred$output_files())
-  #pred$save_output_files(dir = paste0(base_path,"Output"), basename = paste0('fcst_se_',as.character(i), '_',country), timestamp = TRUE, random = TRUE)
-  z_hat = colMeans(as.matrix(predfit, pars = c('mu')))
-  df_pred = as.data.frame(matrix(NA, N1*N2_tes,0))
-  df_pred$y_hat = 100/(1+exp(-z_hat))
-  df_pred$y_true = y_tes[[i]]
-  df_pred$y_residual = df_pred$y_hat - df_pred$y_true
-  df_pred$region = rep(df_loc$region, each = N2_tes)
-  df_pred$Datetime = rep(as.POSIXct(df$Datetime[1:N2][ix_tes[[i]]], tz='GMT'), times=N1)
-  RMSE[i] = sqrt(mean((df_pred$y_residual)^2))
-  MAE[i] = mean(sqrt((df_pred$y_residual)^2))
-  cat('RMSE for', country, ':', RMSE[i],'\n')
-  cat('MAE for', country, ':', MAE[i],'\n')
-  write.csv(df_pred,paste0(base_path,'Output/cv_fcst_se_',as.character(i), '_', country,'.csv'))
-}
-mean(RMSE);
-mean(MAE);
-# Burkina Faso
-#8.764174
-#6.776274
+N2_tr = length(ix_tr)
+data = list(N1 = N1, N2 = N2_tr, X1 = X1, X2 = c(X2_tr), y = z_tr)
+fit_optim = mod$optimize(data = data, seed=123)
+post_mean = fit_optim$summary(variables = params)$estimate
+names(post_mean) = params
 ```
 
+# Prediction
+```{r}
+N2_tes = length(ix_tes)
+data_pred = list(N1 = N1, N2 = N2_tr,
+            X1 = X1, X2 = X2_tr, y = z_tr, 
+            n1 = N1, n2 = N2_tes,
+            x1_new = X1,  x2_new = X2_tes,
+            alpha0 = post_mean['alpha0'],
+            alpha1 = post_mean['alpha1'],
+            alpha2 = post_mean['alpha2'],
+            rho1 = post_mean['rho1'],
+            rho2 = post_mean['rho2'],
+            sigma = post_mean['sigma']
+            )
+pred = modpred$sample(
+  data = data_pred, 
+  iter_warmup = 0,
+  iter_sampling = 1000,
+  chains = 1, 
+  refresh = 100,
+  fixed_param = TRUE)
+  #pred$save_output_files(dir = paste0(base_path,"Output"), basename = paste0('fcst_se_',country), timestamp = TRUE, random = TRUE)
+  post_z_samples = pred$draws(format = "df",  inc_warmup = F)
+  post_y_samples = 100/(1+exp(-post_z_samples[,1:(N1*N2_tes)]))
+  df_pred = as.data.frame(matrix(NA, N1*N2_tes,0))
+  df_pred$y_hat = colMeans(post_y_samples)
+  df_pred$y_true = y_tes
+  df_pred$y_residual = df_pred$y_hat - df_pred$y_true
+  df_pred$region = rep(df_loc$region, each = N2_tes)
+  df_pred$Datetime = rep(as.Date(df$Datetime[1:N2][ix_tes[[i]]], tz='GMT'), times=N1)
+  RMSE = sqrt(mean((df_pred$y_residual)^2))
+  MAE = mean(sqrt((df_pred$y_residual)^2))
+  cat('RMSE for', country, ':', RMSE,'\n')
+  cat('MAE for', country, ':', MAE,'\n')
+  write.csv(df_pred,paste0(base_path,'Output/post_mean_fcst_se_',as.character(i), '_', country,'.csv'))
+  post_y_samples = cbind(post_y_samples, post_z_samples[,(N1*N2_tes+1):dim(post_z_samples)[2]])
+  write.csv(post_y_samples,paste0(base_path,'Output/post_samples_fcst_se_',as.character(i), '_', country,'.csv'))
+```
 
 Plot
 ```{r}
-i = 4
-df_pred =  read.csv(paste0(base_path,'Output/cv_fcst_se_',as.character(i), '_', country,'.csv'), header = TRUE)
-df_pred$Datetime = as.POSIXct(df_pred$Datetime)
+df_plot = df
+Y_pred = matrix(NA, N2,N1)
+Y_true = matrix(NA, N2,N1)
+Y_pred[ix_tr,] = Y[ix_tr,]
+Y_true[ix_tr,] = Y[ix_tr,]
+Y_pred[ix_tes,] = matrix(df_pred$y_hat, N2_tes, N1)
+df_plot$training = c(Y_true)
+df_plot$forecast = c(Y_pred)
+Y_true[ix_tes,] = Y[ix_tes,]
+df_plot$true = c(Y_true)
+df_plot$error = df_plot$forecast - df_plot$true 
+df_plot = df_plot[is.na(df_plot$forecast)!=TRUE,]
+```
+
+```{r}
+df_pred =  read.csv(paste0(base_path,'Output/fcst_se_', country,'.csv'), header = TRUE)
+df_pred$Datetime = as.Date(df_pred$Datetime)
 gg = ggplot(df_pred, aes(x=Datetime,y=y_residual,color=region)) + geom_line() 
 gg
 ```
 
-#Plot
+### Smoothing + forecasting
+If fitting the whole time domain
 ```{r}
-i = 4
-N2_tes = length(ix_tes[[i]])
-N2_tr = length(ix_tr[[i]])
+tr_endday = seq(endday, length = 2, by = "-1 month")[2]
+#tes_startday = tr_endday+1
+ix_tr  = 1:which(df$Datetime[1:N2]==tr_endday)
+ix_tes = which(df$Datetime[1:N2]==startday):which(df$Datetime[1:N2]==endday)
+X2_tr  = matrix(ix_tr, length(ix_tr), 1)
+X2_tes = matrix(ix_tes, length(ix_tes), 1)
+z_tr = c(Z[ix_tr,])
+z_tes = c(Z[ix_tes,])
+y_tr = c(Y[ix_tr,])
+y_tes = c(Y[ix_tes,])
+```
+
+```{r}
+N2_tes = length(ix_tes)
+data_pred = list(N1 = N1, N2 = N2_tr,
+            X1 = X1, X2 = X2_tr, y = z_tr, 
+            n1 = N1, n2 = N2_tes,
+            x1_new = X1,  x2_new = X2_tes,
+            alpha0 = post_mean['alpha0'],
+            alpha1 = post_mean['alpha1'],
+            alpha2 = post_mean['alpha2'],
+            rho1 = post_mean['rho1'],
+            rho2 = post_mean['rho2'],
+            sigma = post_mean['sigma']
+            )
+pred = modpred$sample(
+  data = data_pred, 
+  iter_warmup = 0,
+  iter_sampling = 1000,
+  chains = 1, 
+  refresh = 100,
+  fixed_param = TRUE)
+  #pred$save_output_files(dir = paste0(base_path,"Output"), basename = paste0('fcst_se_',country), timestamp = TRUE, random = TRUE)
+  post_z_samples = pred$draws(format = "df",  inc_warmup = F)
+  post_y_samples = 100/(1+exp(-post_z_samples[,1:(N1*N2_tes)]))
+  df_pred = as.data.frame(matrix(NA, N1*N2_tes,0))
+  df_pred$y_hat = colMeans(post_y_samples)
+  df_pred$y_true = y_tes
+  df_pred$y_residual = df_pred$y_hat - df_pred$y_true
+  df_pred$region = rep(df_loc$region, each = N2_tes)
+  df_pred$Datetime = rep(as.Date(df$Datetime[1:N2][ix_tes[[i]]], tz='GMT'), times=N1)
+  RMSE = sqrt(mean((df_pred$y_residual)^2))
+  MAE = mean(sqrt((df_pred$y_residual)^2))
+  cat('RMSE for', country, ':', RMSE,'\n')
+  cat('MAE for', country, ':', MAE,'\n')
+  write.csv(df_pred,paste0(base_path,'Output/post_mean_smt_se_',as.character(i), '_', country,'.csv'))
+  post_y_samples = cbind(post_y_samples, post_z_samples[,(N1*N2_tes+1):dim(post_z_samples)[2]])
+  write.csv(post_y_samples,paste0(base_path,'Output/post_samples_smt_se_',as.character(i), '_', country,'.csv'))
+```
+
+```{r}
 df_plot = df
 Y_pred = matrix(NA, N2,N1)
 Y_true = matrix(NA, N2,N1)
-Y_pred[ix_tr[[i]],] = Y[ix_tr[[i]],]
-Y_true[ix_tr[[i]],] = Y[ix_tr[[i]],]
-Y_pred[ix_tes[[i]],] = matrix(df_pred$y_hat, N2_tes, N1)
+Y_true[ix_tr,] = Y[ix_tr,]
+Y_pred[ix_tes,] = matrix(df_pred$y_hat, N2_tes, N1)
 df_plot$training = c(Y_true)
 df_plot$forecast = c(Y_pred)
-Y_true[ix_tes[[i]],] = Y[ix_tes[[i]],]
+Y_true[ix_tes,] = Y[ix_tes,]
 df_plot$true = c(Y_true)
 df_plot$error = df_plot$forecast - df_plot$true 
 df_plot = df_plot[is.na(df_plot$forecast)!=TRUE,]
@@ -276,13 +253,14 @@ df_plot = df_plot[is.na(df_plot$forecast)!=TRUE,]
 ```{r}
 y_max = max(df_plot$true); y_min = min(df_plot$true)
 date_th = df_plot$Datetime[N2_tr]
-gg_tr = ggplot(df_plot, aes(x=Datetime,y=forecast,color=region)) + geom_line() + ylim(y_min,y_max) + xlim(as.POSIXct("2021-07-01"),df_plot$Datetime[length(df_plot$Datetime)])+
-       geom_vline(xintercept = date_th,linetype=4) 
+date_th2 = date_th + 4
+gg_tr = ggplot(df_plot, aes(x=Datetime,y=forecast,color=region)) + geom_line() + ylim(y_min,y_max)  +       
+  geom_vline(xintercept = date_th,linetype=4)  + geom_vline(xintercept = date_th2, linetype=4)
 gg_tr
-gg_pred = ggplot(df_plot, aes(x=Datetime,y=true,color=region)) + geom_line() + ylim(y_min,y_max) + xlim(as.POSIXct("2021-07-01"),df_plot$Datetime[length(df_plot$Datetime)])+
+gg_pred = ggplot(df_plot, aes(x=Datetime,y=true,color=region)) + geom_line() + ylim(y_min,y_max)  +
        geom_vline(xintercept = date_th,linetype=4)
 gg_pred
-gg = ggplot(df_plot, aes(x=Datetime,y=training,color=region)) + geom_line() + ylim(y_min,y_max) + xlim(as.POSIXct("2021-07-01"),df_plot$Datetime[length(df_plot$Datetime)])
+gg = ggplot(df_plot, aes(x=Datetime,y=training,color=region)) + geom_line() + ylim(y_min,y_max) 
 gg
 ```
 
