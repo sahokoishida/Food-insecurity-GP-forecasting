@@ -1,0 +1,372 @@
+---
+title: "GP_spatio_temporal_forecasting"
+author: "Sahoko"
+date: "11/1/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Setup
+Load libraries and set up paths
+```{r}
+library(cmdstanr)
+#library(rstan)
+library(ggmcmc)
+```
+
+```{r}
+base_path = '/Users/sahoko/GitHub/Food-insecurity-GP-forecasting/'
+stan_path = paste0(base_path, 'Code/Stan/')
+data_path = paste0(base_path, 'Data/Foini2023/')
+```
+## Read and prepare data
+Read data
+```{r}
+country_list = list.files(path = paste0(data_path,'output_data/'))
+print(country_list)
+# select country
+country = country_list[1]
+print(country)
+file = paste0(data_path,'output_data/', country,'/',country,'-long.csv')
+df = read.csv(file, header = TRUE)
+file = paste0(data_path,'output_data/', country,'/',country,'-location.csv')
+df_loc = read.csv(file, header = TRUE)
+df$Datetime = as.Date(df$Datetime, tz='GMT')
+colnames(df)[colnames(df)=='FCG'] = 'FCS'
+region_list = df_loc$region
+```
+
+
+```{r}
+#Yemen, Burkina, Nigeria 
+#Limit the data from "2019-09-17 GMT" to"2022-04-16 GMT"
+# Syria
+#Limit the data from "2019-09-01 GMT" to"2022-03-31 GMT"
+if (country=='Syria'){
+  df = df[df$Datetime>=as.Date('2019-09-01', tz='GMT')&df$Datetime<=as.Date('2022-03-31', tz='GMT'),]
+} else if (country %in% c('Yemen','Burkina-Faso','Nigeria')){
+  df = df[df$Datetime>=as.Date('2019-09-17', tz='GMT')&df$Datetime<=as.Date('2022-04-16', tz='GMT'),]
+}
+```
+
+Prepare data
+```{r}
+N1 = dim(df_loc)[1]
+N2 = dim(df)[1]/N1
+X1 = df_loc[,c('Easting','Northing')]/10000
+X2 = matrix(1:N2, N2,1)
+y = df$FCS
+z = log(y/(100-y))
+Y = matrix(y, N2, N1)
+Z = matrix(z, N2, N1)
+```
+Divide to training - test data
+```{r}
+if (country=='Syria'){
+    tr_st = rep(as.Date('2019-09-01',tz='GMT'),5)
+      #as.Date(c('2019-09-01','2020-03-01','2020-09-01','2021-03-01','2021-09-01'),tz='GMT')
+    tr_en =as.Date(c('2020-02-29','2020-08-31','2021-02-28','2021-08-31','2022-02-28'),tz='GMT')
+    tes_st = tr_en + 1
+    tes_en = as.Date(c('2020-03-31','2020-09-30','2021-03-31','2021-09-30','2022-03-31'),tz='GMT')
+} else if (country %in% c('Yemen','Burkina-Faso','Nigeria')){
+  tr_st = rep(as.Date('2019-09-17',tz='GMT'),5)
+  # as.Date(c('2019-09-17','2020-03-17','2020-09-17','2021-03-17','2021-09-17'),tz='GMT')
+  tr_en =as.Date(c('2020-03-16','2020-09-16','2021-03-16','2021-09-16','2022-03-16'),tz='GMT')
+  tes_st = tr_en + 1
+  tes_en = as.Date(c('2020-04-16','2020-10-16','2021-04-16','2021-10-16','2022-04-16'),tz='GMT')
+}
+X2_tr = z_tr = y_tr = ix_tr = vector(mode = 'list', length = 5)
+X2_tes = z_tes = y_tes =ix_tes = vector(mode = 'list', length = 5)
+
+for (i in 1:5){
+  ix_tr[[i]]  = 1:which(df$Datetime[1:N2]==tr_en[i])
+  ix_tes[[i]] = which(df$Datetime[1:N2]==tes_st[i]):which(df$Datetime[1:N2]==tes_en[i])
+  X2_tr[[i]]  = matrix(ix_tr[[i]], length(ix_tr[[i]]), 1)
+  X2_tes[[i]] = matrix(ix_tes[[i]], length(ix_tes[[i]]), 1)
+  z_tr[[i]] = c(Z[ix_tr[[i]],])
+  z_tes[[i]] = c(Z[ix_tes[[i]],])
+  y_tr[[i]] = c(Y[ix_tr[[i]],])
+  y_tes[[i]] = c(Y[ix_tes[[i]],])
+}
+```
+## Stan 
+Compile Stan code
+```{r}
+#stan_file = paste0(stan_path,'GPst_est_sqcenfBM.stan') #Using square & centred Brownian motion kernel (similar property to cubic spline)
+stan_file = paste0(stan_path,'GPst_est.stan') # Using SE kernel
+#stan_file = paste0(stan_path,'GPst_est_exponential.stan') # Using SE kernel
+mod = cmdstan_model(stan_file,  include_paths = stan_path)
+#stan_file_pred = paste0(stan_path,'GPst_pred_sqcenfBM.stan')
+stan_file_pred = paste0(stan_path,'GPst_pred.stan')
+#stan_file_pred = paste0(stan_path,'GPst_pred_exponential.stan')
+modpred = cmdstan_model(stan_file_pred,  include_paths = stan_path)
+#params = c('alpha0','alpha1','alpha2','sigma') #BM kernel
+params = c('alpha0','alpha1','alpha2','rho1','rho2','sigma') #SE / exponential / Matern kernels
+```
+MCMC sampling for BM kernel
+```{r}
+for (i in 1:5){
+  data = list(N1 = N1, N2 = length(ix_tr[[i]]), X1 = X1, X2 = X2_tr[[i]], y = z_tr[[i]], Hurst1 = 0.5, Hurst2 = 0.5)
+  fit = mod$sample(
+  data = data, 
+  #seed = 725, 
+  #seed = 3283,
+  seed = 121,
+  iter_warmup = 200,
+  iter_sampling = 300,
+  save_warmup = TRUE,
+  chains = 2, 
+  parallel_chains = 2,
+  refresh = 50
+  )
+  fit$save_output_files(dir = paste0(base_path,"Output"), basename = paste0('fcst_training_bm_', as.character(i), '_' ,country), timestamp = TRUE, random = TRUE)
+}
+```
+MCMC sampling for SE kernel
+```{r}
+for (i in 1:5){
+  data = list(N1 = N1, N2 = length(ix_tr[[i]]), X1 = X1, X2 = c(X2_tr[[i]]), y = z_tr[[i]])
+  fit = mod$sample(
+  data = data, 
+  #seed = 725, 
+  #seed = 3283,
+  seed = 311,
+  iter_warmup = 200,
+  iter_sampling = 100,
+  save_warmup = TRUE,
+  chains = 2, 
+  parallel_chains = 2,
+  refresh = 10
+  )
+  fit$save_output_files(dir = paste0(base_path,"Output"), basename = paste0('fcst_training_se_', as.character(i), '_' ,country), timestamp = TRUE, random = TRUE)
+}
+```
+
+```{r}
+post_mean = fit$summary(variables = params)$mean
+fit$summary(variables = append(params, 'lp__'))
+```
+
+```{r}
+post_samples = fit$draws(format = "df",  inc_warmup = F)
+post_samples$chain = as.character(post_samples$.chain)
+for (i in 1:length(params)){
+  gg = ggplot(data=post_samples, aes_string(x=".iteration", y = params[i], color="chain"))+
+  geom_line() + theme_minimal() 
+  print(gg)
+}
+for (i in 1:length(params)){
+  gg = ggplot(data=post_samples[post_samples$.chain==2,], aes_string(x=".iteration", y = params[i]))+
+  geom_line() + theme_minimal() 
+  print(gg)
+}
+```
+Optimsation for BM kernel
+```{r}
+RMSE = MAE = rep(NA,k)
+for (i in 1:1){
+  N2_tes = length(ix_tes[[i]])
+  N2_tr = length(ix_tr[[i]])
+  data = list(N1 = N1, N2 = length(ix_tr[[i]]), X1 = X1, X2 = X2_tr[[i]], y = z_tr[[i]], Hurst1 = 0.5, Hurst2 = 0.5)
+  fit_optim = mod$optimize(data = data, seed=763)
+  post_mean = fit_optim$summary(variables = params)$estimate
+  data_pred = list(N1 = N1, N2 = length(ix_tr[[i]]),
+            X1 = X1, X2 = X2_tr[[i]], y = z_tr[[i]], 
+            n1 = N1, n2 = N2_tes,
+            x1_new = X1,  x2_new = X2_tes[[i]],
+            Hurst1 = 0.5, Hurst2 = 0.5,
+            alpha0 = fit_optim$summary(variables = 'alpha0')$estimate, alpha1 = fit_optim$summary(variables = 'alpha1')$estimate, 
+            alpha2 = fit_optim$summary(variables = 'alpha2')$estimate, 
+            sigma = fit_optim$summary(variables = 'sigma')$estimate
+            )
+  pred = modpred$sample(
+  data = data_pred, 
+  iter_warmup = 0,
+  iter_sampling = 1,
+  chains = 1, 
+  refresh = 1,
+  fixed_param = TRUE)
+  predfit = rstan::read_stan_csv(pred$output_files())
+  #pred$save_output_files(dir = paste0(base_path,"Output"), basename = paste0('fcst_bm_',as.character(i), '_',country), timestamp = TRUE, random = TRUE)
+  ######
+  # Extracting result
+  n_terms = 4 # change here depending on the model
+  cnames = c('const','space','time','space_time')
+  terms = c('mu0','mu1','mu2','mu12')
+  df_pred = as.data.frame(matrix(NA, N1*N2_tes,n_terms))
+  colnames(df_pred) = cnames[1:n_terms]
+  #main terms
+  df_pred$const = rep(colMeans(as.matrix(predfit, pars = c(terms[1]))), times=(N1*N2_tes))
+  df_pred$space = rep(colMeans(as.matrix(predfit, pars = c(terms[2]))), each=N2_tes)
+  df_pred$time = rep(colMeans(as.matrix(predfit, pars = c(terms[3]))), times=N1)
+  # two way int
+  df_pred$space_time = colMeans(as.matrix(predfit, pars = c(terms[4])))
+  ######
+  dz_hat = rowSums(df_pred)
+  df_pred$y_hat = 100/(1+exp(-z_hat))
+  df_pred$y_true = y_tes[[i]]
+  df_pred$y_residual = df_pred$y_hat - df_pred$y_true
+  df_pred$region = rep(df_loc$region, each = N2_tes)
+  df_pred$Datetime = rep(as.POSIXct(df$Datetime[1:N2][ix_tes[[i]]], tz='GMT'), times=N1)
+  RMSE[i] = sqrt(mean((df_pred$y_residual)^2))
+  MAE[i] = mean(sqrt((df_pred$y_residual)^2))
+  cat('RMSE for', country, ':', RMSE[i],'\n')
+  cat('MAE for', country, ':', MAE[i],'\n')
+  write.csv(df_pred,paste0(base_path,'Output/cv_fcst_bm_',as.character(i), '_', country,'.csv'))
+}
+```
+
+Optimsation for SE kernel
+```{r}
+RMSE = c(); MAE = c()
+i=1
+for (i in 1:1){
+  N2_tes = length(ix_tes[[i]])
+  N2_tr = length(ix_tr[[i]])
+  data = list(N1 = N1, N2 = N2_tr, X1 = X1, X2 = c(X2_tr[[i]]), y = z_tr[[i]])
+  fit_optim = mod$optimize(data = data, seed=123)
+  post_mean = fit_optim$summary(variables = params)$estimate
+  data_pred = list(N1 = N1, N2 = N2_tr,
+            X1 = X1, X2 = X2_tr[[i]], y = z_tr[[i]], 
+            n1 = N1, n2 = N2_tes,
+            x1_new = X1,  x2_new = X2_tes[[i]],
+            alpha0 = fit_optim$summary(variables = 'alpha0')$estimate, alpha1 = fit_optim$summary(variables = 'alpha1')$estimate, 
+            alpha2 = fit_optim$summary(variables = 'alpha2')$estimate, 
+            rho1 = fit_optim$summary(variables = 'rho1')$estimate, rho2 = fit_optim$summary(variables = 'rho2')$estimate, 
+            sigma = fit_optim$summary(variables = 'sigma')$estimate
+            )
+  rm(fit_optim)
+  pred = modpred$sample(
+  data = data_pred, 
+  iter_warmup = 0,
+  iter_sampling = 1000,
+  chains = 1, 
+  refresh = 100,
+  fixed_param = TRUE)
+  predfit = rstan::read_stan_csv(pred$output_files())
+  pred$save_output_files(dir = paste0(base_path,"Output"), basename = paste0('fcst_se_',as.character(i), '_',country), timestamp = TRUE, random = TRUE)
+  post_z_samples = pred$draws(format = "df",  inc_warmup = F)
+  post_y_samples = 100/(1+exp(-post_z_samples[,1:(N1*N2_tes)]))
+  df_pred = as.data.frame(matrix(NA, N1*N2_tes,0))
+  df_pred$y_hat = colMeans(post_y_samples)
+  df_pred$y_true = y_tes[[i]]
+  df_pred$y_residual = df_pred$y_hat - df_pred$y_true
+  df_pred$region = rep(df_loc$region, each = N2_tes)
+  df_pred$Datetime = rep(as.Date(df$Datetime[1:N2][ix_tes[[i]]], tz='GMT'), times=N1)
+  RMSE[i] = sqrt(mean((df_pred$y_residual)^2))
+  MAE[i] = mean(sqrt((df_pred$y_residual)^2))
+  cat('RMSE for', country, ':', RMSE[i],'\n')
+  cat('MAE for', country, ':', MAE[i],'\n')
+  write.csv(df_pred,paste0(base_path,'Output/cv_fcst_se_',as.character(i), '_', country,'.csv'))
+  post_y_samples = cbind(post_y_samples, post_z_samples[,(N1*N2_tes+1):dim(post_z_samples)[2]])
+  write.csv(post_y_samples,paste0(base_path,'Output/post_samples_cv_fcst_se_',as.character(i), '_', country,'.csv'))
+}
+mean(RMSE);
+mean(MAE);
+# Burkina Faso
+#7.286001
+#5.969191
+```
+
+Optimsation for exp kernel
+```{r}
+#RMSE = c(); MAE = c()
+for (i in 4:4){
+  N2_tes = length(ix_tes[[i]])
+  N2_tr = length(ix_tr[[i]])
+  data = list(N1 = N1, N2 = N2_tr, X1 = X1, X2 = c(X2_tr[[i]]), y = z_tr[[i]])
+  fit_optim = mod$optimize(data = data, seed=172)
+  post_mean = fit_optim$summary(variables = params)$estimate
+  data_pred = list(N1 = N1, N2 = N2_tr,
+            X1 = X1, X2 = X2_tr[[i]], y = z_tr[[i]], 
+            n1 = N1, n2 = N2_tes,
+            x1_new = X1,  x2_new = X2_tes[[i]],
+            alpha0 = fit_optim$summary(variables = 'alpha0')$estimate, alpha1 = fit_optim$summary(variables = 'alpha1')$estimate, 
+            alpha2 = fit_optim$summary(variables = 'alpha2')$estimate, 
+            rho1 = fit_optim$summary(variables = 'rho1')$estimate, rho2 = fit_optim$summary(variables = 'rho2')$estimate, 
+            sigma = fit_optim$summary(variables = 'sigma')$estimate
+            )
+  rm(fit_optim)
+  pred = modpred$sample(
+  data = data_pred, 
+  iter_warmup = 0,
+  iter_sampling = 1000,
+  chains = 1, 
+  refresh = 100,
+  fixed_param = TRUE)
+  predfit = rstan::read_stan_csv(pred$output_files())
+  pred$save_output_files(dir = paste0(base_path,"Output"), basename = paste0('fcst_exponential_',as.character(i), '_',country), timestamp = TRUE, random = TRUE)
+  post_z_samples = pred$draws(format = "df",  inc_warmup = F)
+  post_y_samples = 100/(1+exp(-post_z_samples[,1:(N1*N2_tes)]))
+  df_pred = as.data.frame(matrix(NA, N1*N2_tes,0))
+  df_pred$y_hat = colMeans(post_y_samples)
+  df_pred$y_true = y_tes[[i]]
+  df_pred$y_residual = df_pred$y_hat - df_pred$y_true
+  df_pred$region = rep(df_loc$region, each = N2_tes)
+  df_pred$Datetime = rep(as.Date(df$Datetime[1:N2][ix_tes[[i]]], tz='GMT'), times=N1)
+  RMSE[i] = sqrt(mean((df_pred$y_residual)^2))
+  MAE[i] = mean(sqrt((df_pred$y_residual)^2))
+  cat('RMSE for', country, ':', RMSE[i],'\n')
+  cat('MAE for', country, ':', MAE[i],'\n')
+  write.csv(df_pred,paste0(base_path,'Output/cv_fcst_exponential_',as.character(i), '_', country,'.csv'))
+  post_y_samples = cbind(post_y_samples, post_z_samples[,(N1*N2_tes+1):dim(post_z_samples)[2]])
+  write.csv(post_y_samples,paste0(base_path,'Output/post_samples_cv_fcst_exponential_',as.character(i), '_', country,'.csv'))
+}
+mean(RMSE);
+mean(MAE);
+# Burkina Faso
+#7.286001
+#5.969191
+```
+
+
+
+Plot
+```{r}
+i = 1
+df_pred =  read.csv(paste0(base_path,'Output/cv_fcst_exponential_',as.character(i), '_', country,'.csv'), header = TRUE)
+df_pred$Datetime = as.POSIXct(df_pred$Datetime)
+gg = ggplot(df_pred, aes(x=Datetime,y=y_residual,color=region)) + geom_line() 
+gg
+```
+
+#Plot
+```{r}
+i = 1
+N2_tes = length(ix_tes[[i]])
+N2_tr = length(ix_tr[[i]])
+df_plot = df
+Y_pred = matrix(NA, N2,N1)
+Y_true = matrix(NA, N2,N1)
+Y_pred[ix_tr[[i]],] = Y[ix_tr[[i]],]
+Y_true[ix_tr[[i]],] = Y[ix_tr[[i]],]
+Y_pred[ix_tes[[i]],] = matrix(df_pred$y_hat, N2_tes, N1)
+df_plot$training = c(Y_true)
+df_plot$forecast = c(Y_pred)
+Y_true[ix_tes[[i]],] = Y[ix_tes[[i]],]
+df_plot$true = c(Y_true)
+df_plot$error = df_plot$forecast - df_plot$true 
+df_plot = df_plot[is.na(df_plot$forecast)!=TRUE,]
+```
+
+```{r}
+y_max = max(df_plot$true); y_min = min(df_plot$true)
+date_th = df_plot$Datetime[N2_tr]
+gg_tr = ggplot(df_plot, aes(x=Datetime,y=forecast,color=region)) + geom_line() + ylim(y_min,y_max)  +
+ #xlim(as.Date("2021-09-01"),df_plot$Datetime[length(df_plot$Datetime)])+
+       geom_vline(xintercept = date_th,linetype=4) 
+gg_tr
+gg_pred = ggplot(df_plot, aes(x=Datetime,y=true,color=region)) + geom_line() + ylim(y_min,y_max)  +
+  #xlim(as.Date("2021-09-01"),df_plot$Datetime[length(df_plot$Datetime)])+
+       geom_vline(xintercept = date_th,linetype=4)
+gg_pred
+gg = ggplot(df_plot, aes(x=Datetime,y=training,color=region)) + geom_line() + ylim(y_min,y_max) #+
+ #xlim(as.Date("2021-09-01"),df_plot$Datetime[length(df_plot$Datetime)])
+gg
+```
+
+
+
+
