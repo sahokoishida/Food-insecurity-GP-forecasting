@@ -80,6 +80,10 @@ real kernel_exponential(vector x, vector y, real rho){
   // Input: x, y, and the length scale (rho) of exponential kernel
   return exp(-distance(x,y)/(rho));
 }
+real kernel_AR(vector x, vector y, real rho){
+  return((rho*distance(x,y))/(1-square(rho)));
+}
+
 matrix Gram_SE(matrix X, int N, real rho){
   // Output: n by n Gram matrix with squared exponential kernel
   // Input: X - predictor
@@ -109,6 +113,21 @@ matrix Gram_exponential(matrix X, int N, real rho){
   }
   return K ;
 }
+matrix Gram_AR(matrix X, int N, real rho){
+  // Output: n by n Gram matrix with exponential kernel
+  // Input: X - predictor
+  //        n - n_rows of X
+  //        rho - correlation parameters of the kernel
+  matrix[N,N] K = diag_matrix(rep_vector((1/(1-square(rho))),N));
+  for (i in 1:(N-1)){
+    for (j in (i+1):N){
+      K[i,j] = kernel_AR(to_vector(X[i,]),to_vector(X[j,]),rho);
+      K[j,i] = K[i,j];
+    }
+  }
+  return K ;
+}
+
 
 matrix Gram_fBM(matrix X, int N, real Hurst){
   // Output: Gram matrix with fractional brownian motion
@@ -193,6 +212,20 @@ vector kvec_exponential(matrix X, vector x_tes, int N, real rho){
   return kvec ;
 }
 
+vector kvec_AR(matrix X, vector x_tes, int N, real rho){
+  // Output: a vector of k(x*, x_1),...,k(x*, x_N) for a given test point x*
+  //          with AR
+  // Input: X - (traing) predictor
+  //        x_tes - test point
+  //        N - n_rows of X
+  //        rho - correlation parameters of the kernel
+  vector[N] kvec ;
+  for (i in 1:N){
+    kvec[i] = kernel_AR(x_tes, to_vector(X[i,]), rho);
+  }
+  return kvec ;
+}
+
 vector kvec_fBM(matrix X, vector x_new, int N, real Hurst){
   // Output: a vector of k(x*, x_1),...,k(x*, x_N) for a given test point x*
   //          with fBM kernel
@@ -212,7 +245,8 @@ vector kvec_fBM(matrix X, vector x_new, int N, real Hurst){
   return kvec ;
 }
 
-vector kvec_cen(vector kvec, vector Krowsum, int N){
+vector kvec_cen(vector kvec, vector Krowsum){
+  int N = rows(kvec) ;
   return kvec - rep_vector(sum(kvec)/N, N) -(1.0/N)*Krowsum + rep_vector(sum(Krowsum)/square(N), N);
 }
 
@@ -248,4 +282,19 @@ matrix kronecker_prod(matrix A, matrix B) {
     }
   }
   return C;
+}
+matrix mat_mat_prod(matrix A, matrix B, matrix C){
+  // compute M = (A otimes B)%*%C
+  matrix[rows(A)*rows(B),cols(C)] M;
+  //int nrowA = rows(A);
+  int ncolA = col(A);
+  //int nrowB = rows(B);
+  int ncolB = cols(B);
+  int nrowC = rows(C); // should equal ncolA * ncolB
+  int ncolC = cols(C);
+  for (i in 1:ncolC){
+    vector[nrowC] c = C[,i];
+    M[,i] = to_vector(B * (to_matrix(c, ncolB, ncolA) * A'));
+  }
+  return M;
 }
