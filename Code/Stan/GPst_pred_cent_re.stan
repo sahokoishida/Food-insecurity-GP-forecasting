@@ -2,9 +2,9 @@ functions {
   #include GP_helper.stan
 }
 data {
-  int<lower=1> N1 ;
+  int<lower=1> N1 ; //training
   int<lower=1> N2 ;
-  int<lower=1> n1 ;
+  int<lower=1> n1 ;//test
   int<lower=2> n2 ;
   matrix[N1,2] X1;
   matrix[N2,1] X2;
@@ -139,13 +139,13 @@ transformed data {
       B2 = Q2'*K2_trnew;
       C2 = Q2'*rep_matrix(1, N2, n2);
       // mean
-      mu_new = square(alpha0)*to_vector(B2' * (to_matrix(q, N2, N1)*B1)) + square(sigma1)**to_vector(C2' * (to_matrix(q, N2, N1)*C1)); /// add RE term HERE
+      mu_new = square(alpha0)*to_vector(B2' * (to_matrix(q, N2, N1)*B1)) + square(sigma1)*to_vector(C2' * (to_matrix(q, N2, N1)*C1));
       // variance
       B = square(alpha0)*kronecker_prod(B1, B2);
       C = square(sigma1)*kronecker_prod(C1, C2);
       {
        matrix[n, n] K_new;
-       K_new = square(alpha0)*kronecker_prod(K1_new,K2_new) + square(sigma1)*kronecker_prod(diag_matrix(1, n1),rep_matrix(1,n2,n2))  - B'*diag_pre_multiply((rep_vector(1,N)./eval),B)- C'*diag_pre_multiply((rep_vector(1,N)./eval),C);/// add RE term HERE
+       K_new = square(alpha0)*kronecker_prod(K1_new,K2_new) + square(sigma1)*kronecker_prod(diag_matrix(rep_vector(1, n1)),rep_matrix(1,n2,n2))  - B'*diag_pre_multiply((rep_vector(1,N)./eval),B)- C'*diag_pre_multiply((rep_vector(1,N)./eval),C);/// add RE term HERE
        L_new = cholesky_decompose(K_new + diag_matrix(rep_vector(1e-9,n)));
       }
     }
