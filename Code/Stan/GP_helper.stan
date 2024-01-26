@@ -287,7 +287,7 @@ matrix mat_mat_prod(matrix A, matrix B, matrix C){
   // compute M = (A otimes B)%*%C
   matrix[rows(A)*rows(B),cols(C)] M;
   //int nrowA = rows(A);
-  int ncolA = col(A);
+  int ncolA = cols(A);
   //int nrowB = rows(B);
   int ncolB = cols(B);
   int nrowC = rows(C); // should equal ncolA * ncolB
