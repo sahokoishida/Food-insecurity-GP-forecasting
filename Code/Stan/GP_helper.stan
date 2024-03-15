@@ -1,6 +1,6 @@
 /* functions related to eigendecomposition of centered Gram matrix */
 
-int n_zero_eval(vector eval, int n){
+int n_zero_eval(vector eval){
   // count number of zero eigen values (smaller than threshold)
   // Input: eval - a vector of eigenvalues
   //        n ---- a size of a matrix
@@ -14,20 +14,22 @@ int n_zero_eval(vector eval, int n){
   return i - 1 ;
 }
 
-vector eval_zero(vector eval, int k, int n){
+vector eval_zero(vector eval, int k){
   // replace eigenvalues with zero
+  int n = num_elements(eval);
   vector[n] evalz = eval;
   for (i in 1:k)  evalz[i] = 0.0;
   return evalz ;
 }
 
-matrix GS_complete(matrix Evec, int k, int n){
+matrix GS_complete(matrix Evec, int k){
   // Gram-Schmidt process
   // Input: Evec - original sets of eigenvaectors
-  //        k, n --the number of zero eigen values, a size of a matrix
+  //        k -the number of zero eigen values
   // Output: sets of eigenvaectors after Gram-Schumidt process
-  matrix[n,k] Q;
-  matrix[n,k] V ;
+  matrix[rows(Evec),k] Q;
+  matrix[rows(Evec),k] V ;
+  int n = rows(Evec);
   matrix[n,k] X = Evec[,1:k];
   X[,1] =  rep_vector(1/sqrt(n),n) ;
   V = X ;
@@ -41,20 +43,21 @@ matrix GS_complete(matrix Evec, int k, int n){
   return append_col(Q,Evec[,(k+1):n]);
 }
 
-matrix cen_eigen_decompose(matrix K, int N){
+matrix cen_eigen_decompose(matrix K){
   // Output: Eigenvalues and eigenvector of a centered Gram matrix
-  // Input: K - Centred Gram matrix, N - nrow = ncol of K
-  matrix[N, N+1] R;
+  // Input: K - Centred Gram matrix
+  matrix[rows(K), rows(K)+1] R;
+  int N = rows(K);
   {
     matrix[N,N] Q ;
     vector[N] l = eigenvalues_sym(K);
     {
-      int k = n_zero_eval(l,N);
+      int k = n_zero_eval(l);
       if (k > 0){
         Q = eigenvectors_sym(K);
-        l = eval_zero(l, k, N);
+        l = eval_zero(l, k);
         if (k>1){
-            Q = GS_complete(Q, k, N);
+            Q = GS_complete(Q, k);
         } else {
           Q[,1] = rep_vector(1/sqrt(N),N);
         }
@@ -84,11 +87,26 @@ real kernel_AR(vector x, vector y, real rho){
   return((rho*distance(x,y))/(1-square(rho)));
 }
 
-matrix Gram_SE(matrix X, int N, real rho){
+real kernel_matern32(vector x, vector y, real rho){
+  // Output k(x,y) = cov(f(x), f(y)) where k is matern kernel with kappa param=3/2
+  // Input: x, y, and the length scale (rho)
+  real r = (sqrt(3)*distance(x,y))/rho;
+  return((1+r)*exp(-r));
+}
+real kernel_matern52(vector x, vector y, real rho){
+  // Output k(x,y) = cov(f(x), f(y)) where k is matern kernel with kappa param=5/2
+  // Input: x, y, and the length scale (rho)
+  real r = (sqrt(5)*distance(x,y))/rho;
+  return((1+r+r/3)*exp(-r));
+}
+
+
+matrix Gram_SE(matrix X, real rho){
   // Output: n by n Gram matrix with squared exponential kernel
   // Input: X - predictor
   //        n - n_rows of X
   //        rho - length scale of s.e. kernel
+  int N = rows(X);
   matrix[N,N] K = diag_matrix(rep_vector(1,N));
   for (i in 1:(N-1)){
     for (j in (i+1):N){
@@ -99,11 +117,12 @@ matrix Gram_SE(matrix X, int N, real rho){
   return K ;
 }
 
-matrix Gram_exponential(matrix X, int N, real rho){
+matrix Gram_exponential(matrix X, real rho){
   // Output: n by n Gram matrix with exponential kernel
   // Input: X - predictor
   //        n - n_rows of X
   //        rho - length scale of exponential kernel
+  int N = rows(X);
   matrix[N,N] K = diag_matrix(rep_vector(1,N));
   for (i in 1:(N-1)){
     for (j in (i+1):N){
@@ -128,38 +147,71 @@ matrix Gram_AR(matrix X, int N, real rho){
   return K ;
 }
 
+matrix Gram_matern32(matrix X, real rho){
+  // Output: n by n Gram matrix with matern kernel with kappa param=3/2
+  // Input: X - predictor
+  //        rho - length scale of the matern kernel
+  int N = rows(X);
+  matrix[N,N] K = diag_matrix(rep_vector(1,N));
+  for (i in 1:(N-1)){
+    for (j in (i+1):N){
+      K[i,j] = kernel_matern32(to_vector(X[i,]),to_vector(X[j,]),rho);
+      K[j,i] = K[i,j];
+    }
+  }
+  return K ;
+}
+matrix Gram_matern52(matrix X, real rho){
+  // Output: n by n Gram matrix with matern kernel with kappa param=5/2
+  // Input: X - predictor
+  //        rho - length scale of the matern kernel
+  int N = rows(X);
+  matrix[N,N] K = diag_matrix(rep_vector(1,N));
+  for (i in 1:(N-1)){
+    for (j in (i+1):N){
+      K[i,j] = kernel_matern52(to_vector(X[i,]),to_vector(X[j,]),rho);
+      K[j,i] = K[i,j];
+    }
+  }
+  return K ;
+}
 
-matrix Gram_fBM(matrix X, int N, real Hurst){
+
+matrix Gram_fBM(matrix X, real Hurst){
   // Output: Gram matrix with fractional brownian motion
   // Input: X - predictor
   //        N - nrow of X
   //        Hurst - Hurst coefficeint of fBM kernel
-  matrix[N, N] K;
-  matrix[N, N] E ;
-  matrix[N, N] B = rep_matrix(0, N, N);;
-  vector[N] d;
-  matrix[N, N] A = diag_matrix(rep_vector(1,N)) - (1.0/N)*rep_matrix(1, N, N);
-  matrix[N, N] Xcp = X * X' ;
-  vector[N] dvec = diagonal(Xcp);
-  for (i in 1:(N-1)){
-    d[i] = pow(fabs(dvec[i]), Hurst);
-    for (j in (i+1):N){
-      B[i,j] = pow(fabs(dvec[i] + dvec[j] - 2 * Xcp[i,j]), Hurst);
-      B[j,i] = B[i,j];
+  matrix[rows(X), rows(X)] K;
+  int N = rows(X);
+  {
+    vector[N] d;
+    matrix[N, N] B = rep_matrix(0, N, N);;
+    matrix[N, N] A = diag_matrix(rep_vector(1,N)) - (1.0/N)*rep_matrix(1, N, N);
+    matrix[N, N] Xcp = X * X' ;
+    vector[N] dvec = diagonal(Xcp);
+    for (i in 1:(N-1)){
+      d[i] = pow(fabs(dvec[i]), Hurst);
+      for (j in (i+1):N){
+        B[i,j] = pow(fabs(dvec[i] + dvec[j] - 2 * Xcp[i,j]), Hurst);
+        B[j,i] = B[i,j];
+      }
+    }
+    d[N] = pow(fabs(dvec[N]), Hurst);
+    {
+      matrix[N, N] E = rep_matrix(d, N);
+      K = 0.5 * (E + E' - B);
     }
   }
-  d[N] = pow(fabs(dvec[N]), Hurst);
-  E = rep_matrix(d, N);
-  K = 0.5 * (E + E' - B);
   return K ;
 }
 
-matrix Gram_fBM_sq_cen(matrix X, int N, real Hurst){
+matrix Gram_fBM_sq_cen(matrix X, real Hurst){
   // Output: Gram matrix with square centered fractional brownian motion
   // Input: X - predictor
-  //        N - nrow of X
   //        Hurst - Hurst coefficeint of fBM kernel
-  matrix[N, N] K = Gram_fBM(X, N, Hurst);
+  int N = rows(X);
+  matrix[N, N] K = Gram_fBM(X, Hurst);
   matrix[N, N] A = diag_matrix(rep_vector(1,N)) - (1.0/N)*rep_matrix(1, N, N);
   K = A * K * A;
   K =  K * K;
@@ -168,72 +220,92 @@ matrix Gram_fBM_sq_cen(matrix X, int N, real Hurst){
   return K;
 }
 
-matrix Gram_centring(matrix K, int N){
+matrix Gram_centring(matrix K){
     // Output: centered Gram matrix
     // Input: K - Uncentered Gram matrix
-    //        N - nrow of K
+    int N = rows(K);
     matrix[N, N] A = diag_matrix(rep_vector(1,N)) - (1.0/N)*rep_matrix(1, N, N);
     return A * K * A ;
 }
 
-matrix Gram_square(matrix K, int N){
+matrix Gram_square(matrix K){
     // Output: squared Gram matrix
     // Input: K -  Gram matrix
     //        N - nrow of K
+    int N = rows(K);
     matrix[N,N] Ksq = K * K ;
     Ksq = 0.5 *(Ksq + Ksq');
     return Ksq;
 }
 
-vector kvec_SE(matrix X, vector x_tes, int N, real rho){
+vector kvec_SE(matrix X, vector x_tes, real rho){
   // Output: a vector of k(x*, x_1),...,k(x*, x_N) for a given test point x*
   //          with squared exponential kernel
   // Input: X - (traing) predictor
   //        x_tes - test point
   //        N - n_rows of X
   //        rho - length scale of s.e. kernel
-  vector[N] kvec ;
+  vector[rows(X)] kvec ;
+  int N = rows(X);
   for (i in 1:N){
     kvec[i] = kernel_SE(x_tes, to_vector(X[i,]), rho);
   }
   return kvec ;
 }
-vector kvec_exponential(matrix X, vector x_tes, int N, real rho){
+vector kvec_matern52(matrix X, vector x_tes, real rho){
+  // Output: a vector of k(x*, x_1),...,k(x*, x_N) for a given test point x*
+  //          with squared exponential kernel
+  // Input: X - (traing) predictor
+  //        x_tes - test point
+  //        N - n_rows of X
+  //        rho - length scale of s.e. kernel
+  vector[rows(X)] kvec ;
+  int N = rows(X);
+  for (i in 1:N){
+    kvec[i] = kernel_matern52(x_tes, to_vector(X[i,]), rho);
+  }
+  return kvec ;
+}
+
+vector kvec_exponential(matrix X, vector x_tes, real rho){
   // Output: a vector of k(x*, x_1),...,k(x*, x_N) for a given test point x*
   //          with exponential kernel
   // Input: X - (traing) predictor
   //        x_tes - test point
   //        N - n_rows of X
   //        rho - length scale of the kernel
-  vector[N] kvec ;
+  vector[rows(X)] kvec ;
+  int N = rows(X);
   for (i in 1:N){
     kvec[i] = kernel_exponential(x_tes, to_vector(X[i,]), rho);
   }
   return kvec ;
 }
 
-vector kvec_AR(matrix X, vector x_tes, int N, real rho){
+vector kvec_AR(matrix X, vector x_tes, real rho){
   // Output: a vector of k(x*, x_1),...,k(x*, x_N) for a given test point x*
   //          with AR
   // Input: X - (traing) predictor
   //        x_tes - test point
   //        N - n_rows of X
   //        rho - correlation parameters of the kernel
-  vector[N] kvec ;
+  vector[rows(X)] kvec ;
+  int N = rows(X);
   for (i in 1:N){
     kvec[i] = kernel_AR(x_tes, to_vector(X[i,]), rho);
   }
   return kvec ;
 }
 
-vector kvec_fBM(matrix X, vector x_new, int N, real Hurst){
+vector kvec_fBM(matrix X, vector x_new, real Hurst){
   // Output: a vector of k(x*, x_1),...,k(x*, x_N) for a given test point x*
   //          with fBM kernel
   // Input: X - (traing) predictor
   //        x_tes - test point
   //        N - n_rows of X
   //        Hurst - hurst coefficeint of fBM kernel
-  vector[N] kvec ;
+  vector[rows(X)] kvec ;
+  int N = rows(X);
   real t1 = pow(dot_self(x_new), Hurst) ;
   vector[N] t2 ;
   vector[N] t12 ;
@@ -246,7 +318,7 @@ vector kvec_fBM(matrix X, vector x_new, int N, real Hurst){
 }
 
 vector kvec_cen(vector kvec, vector Krowsum){
-  int N = rows(kvec) ;
+  int N = num_elements(kvec) ;
   return kvec - rep_vector(sum(kvec)/N, N) -(1.0/N)*Krowsum + rep_vector(sum(Krowsum)/square(N), N);
 }
 
