@@ -1,0 +1,192 @@
+---
+title: "Experiment on simulated data - code check"
+date: "2/28/2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Setup
+Load libraries and set up paths
+```{r}
+library(cmdstanr)
+library(rstan)
+library(ggmcmc)
+library(ggplot2)
+library(plotly)
+path = '~/GitHub/GP-ANOVA-model-selection/'
+source(paste0(path,'Code/R/GP_helpers.R'))
+source(paste0(path,'Code/R/kernels.R'))
+```
+## Data generating
+```{r}
+N1 = 36
+N2 = 100
+x1 = seq(-5,5,length.out=sqrt(N1))
+X1 = as.matrix(cbind(rep(x1,times=sqrt(N1)), rep(x1, each = sqrt(N1))))
+x2 = seq(1,N2,length.out=N2)
+X2 = matrix(x2,N2,1)
+rho1 = 6
+#rho2 = 30
+Hurst2 = 0.5
+alpha0 = 1
+alpha1 = 0.5
+alpha2 = 0.1
+sigma = 1
+sigma1 = 0.5
+K1 =  (alpha1^2) * cen_gram(exp_gram(X1, rho1))
+K2 =  (alpha2^2) *sq_cen_fBM_kernel_mat(X2, Hurst2)
+#K2 =  (alpha2^2) * cen_gram(exp_gram(X2, rho2))
+N = N1*N2
+#Jn1 = matrix(1,N1,N1)
+#Jn2 = matrix(1,N2,N2)
+E1 = cen_eigen(K1)
+E2 = cen_eigen(K2)
+Q1 = E1$vectors
+Q2 = E2$vectors
+l1 = E1$values
+l2 = E2$values
+```
+
+```{r}
+ones1 = rep(0,N1); ones1[1] = N1
+ones2 = rep(0,N2); ones2[1] = N2
+lambda = c(tcrossprod(ones2,ones1)) +  c(tcrossprod(ones2,l1)) +  c(tcrossprod(l2,ones1)) +  c(tcrossprod(l2,l1)) +
+  c(tcrossprod(ones2,rep(sigma1,N1))) + sigma^2 # random effect + residual error
+sqrt_l = sqrt(lambda)
+#set.seed(5087)
+set.seed(4321)
+#set.seed(815)
+eta = rnorm(N,0,1)
+m = sqrt_l * eta
+y = kron_mat_vec_2d(Q1,Q2,m)
+Y = matrix(y, N2, N1)
+hist(y)
+```
+
+
+```{r}
+df = as.data.frame(cbind(y, (rep(1:N1, each = N2)), (rep(X2,times=N1))))
+colnames(df) = c('y','region','time')
+df$region = as.character(df$region)
+df$z = 1/(1+exp(-y))*100
+fig <- plot_ly(data = df, x = ~time, y = ~y, color=~region, type = 'scatter', mode = 'lines') 
+fig
+```
+
+```{r}
+base_path = '/Users/sahoko/GitHub/Food-insecurity-GP-forecasting/'
+stan_path = paste0(base_path, 'Code/Stan/')
+```
+
+```{r}
+N1_tr = round(N1*0.8)
+n1 = N1 - N1_tr
+n2 = N2
+set.seed(1242)
+tr_ix = sort(sample(1:N1,N1_tr))
+tes_ix = c(1:N1)[!c(1:N1)%in%tr_ix]
+X1_tr = X1[tr_ix,]
+x1_new = X1[-tr_ix,]
+x2_new = X2
+y_tr = c(Y[,tr_ix])
+y_tes = c(Y[,-tr_ix])
+#y_tr == df[df$region%in%as.character(tr_ix),"y"]
+```
+
+
+```{r}
+stan_file = paste0(stan_path,'kernel_exploration/exp_BM_cent_re1/GPst_est_rhofixed.stan')
+#stan_file = paste0(stan_path,'kernel_exploration/exp_BM_cent_re1/GPst_est.stan')
+mod = cmdstan_model(stan_file,  include_paths = stan_path)
+stan_file = paste0(stan_path,'kernel_exploration/exp_BM_cent_re1/GPst_pred.stan')
+mod_pred = cmdstan_model(stan_file,  include_paths = stan_path)
+params = c('alpha0','alpha1','alpha2','sigma','sigma1')
+#params = c('alpha0','alpha1','alpha2','sigma','sigma1','rho1')
+data = list(N1 = N1_tr, N2 = N2, X1 = X1_tr, X2 = X2, y = y_tr, Hurst2 = 0.5, rho1 = 6)
+
+```
+
+```{r}
+fit = mod$sample(
+  data = data, 
+  #seed = 725, 
+  seed = 3283,
+  iter_warmup = 200,
+  iter_sampling = 300,
+  save_warmup = TRUE,
+  chains = 2, 
+  parallel_chains = 2,
+  refresh = 50
+)
+```
+
+```{r}
+post_mean = fit$summary(variables = params)$mean
+post_samples = fit$draws(format = "df",  inc_warmup = F)
+post_samples$chain = as.character(post_samples$.chain)
+for (param in params){
+  gg = ggplot(data=post_samples, aes_string(x=".iteration", y = param, color="chain"))+
+  geom_line() + theme_minimal() 
+  print(gg)
+}
+for (param in params){
+  gg = ggplot(data=post_samples, aes_string(x=param,color="chain", fill="chain"))+
+  geom_histogram(alpha=0.5, position="identity") + theme_minimal() 
+  print(gg)
+}
+```
+
+
+```{r}
+post_mean = fit$summary(variables = params)$mean
+names(post_mean) = params
+post_mean
+```
+
+```{r}
+data_pred = list(N1 = N1_tr, N2 = N2,
+            X1 = X1_tr, X2 = X2, y = y_tr, 
+            n1 = n1, n2 = n2,
+            x1_new = x1_new,  x2_new = x2_new,
+            alpha0 = post_mean['alpha0'],
+            alpha1 = post_mean['alpha1'],
+            alpha2 = post_mean['alpha2'],
+            sigma1 = post_mean['sigma1'],
+            sigma = post_mean['sigma'],
+            #rho1 = post_mean['rho1'],
+            rho1 = 6,
+            Hurst2 = 0.5
+            )
+pred = mod_pred$sample(
+  data = data_pred, 
+  iter_warmup = 0,
+  iter_sampling = 1000,
+  chains = 1, 
+  refresh = 100,
+  fixed_param = TRUE)
+  post_y_samples = pred$draws(format = "df",  inc_warmup = F)
+  df_pred = as.data.frame(matrix(NA, n1*N2,0))
+  df_pred$y_hat = colMeans(post_y_samples[,1:(n1*N2)])
+  df_pred$y_true = y_tes
+  df_pred$y_residual = df_pred$y_hat - df_pred$y_true
+  df_pred$region = rep(tes_ix, each = N2)
+  df_pred$region = as.character(df_pred$region)
+  df_pred$time = rep(1:N2, times=n1)
+  RMSE = sqrt(mean((df_pred$y_residual)^2))
+  MAE = mean(sqrt((df_pred$y_residual)^2))
+```
+
+```{r}
+gg = ggplot(data=df_pred, aes(y=y_tes, x=time, color=region)) + geom_line() + ylim(-30,30) + 
+  theme_minimal()
+gg
+
+gg = ggplot(data=df_pred, aes(y=y_hat, x=time, color=region)) + geom_line() + ylim(-30,30) +
+  theme_minimal()
+gg
+```
+
+
+
