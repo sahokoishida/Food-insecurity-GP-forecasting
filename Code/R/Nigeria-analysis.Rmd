@@ -1,0 +1,409 @@
+---
+title: "Nigeria"
+author: "Sahoko Ishida"
+date: "2/28/2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Setup
+Load libraries and set up paths
+```{r}
+library(cmdstanr)
+library(rstan)
+library(ggmcmc)
+library(ggplot2)
+library(plotly)
+```
+
+```{r}
+base_path = '/Users/sahoko/GitHub/Food-insecurity-GP-forecasting/'
+stan_path = paste0(base_path, 'Code/Stan/')
+data_path = paste0(base_path, 'Data/Foini2023/')
+data_path2 = paste0(base_path, 'Data/New/')
+```
+## Read and prepare data
+Read data
+```{r}
+#country_list = list.files(path = paste0(data_path,'output_data/'))
+#print(country_list)
+# select country
+country = "Nigeria" 
+file = paste0(data_path2,'output_data/', country,'/',country,'-long.csv')
+df = read.csv(file, header = TRUE)
+file = paste0(data_path,'output_data/', country,'/',country,'-location.csv')
+df_loc = read.csv(file, header = TRUE)
+df_loc$region[df_loc$region=='Nasarawa']="Nassarawa"
+df$Datetime = as.POSIXct(df$Datetime, tz='GMT')
+region_list = df_loc$region
+```
+
+```{r}
+#remove the first 29 days
+df = na.omit(df)
+dim(df)
+#
+high_frequenncy_region_list = c('Adamawa','Yobe','Borno')
+survey_region_list = unique(df$region[df$dataType=='SURVEY'])
+survey_region_list = sort(survey_region_list[!survey_region_list%in%high_frequenncy_region_list])
+missing_region_list = sort(unique(df$region[df$dataType=='PREDICTION'])) 
+#
+set.seed(283)
+#set.seed(218)
+#training_region_list =  sort(sample(survey_region_list,round(length(survey_region_list)*0.8)))
+#prediction_region_list = sort(survey_region_list[!survey_region_list%in%training_region_list])
+training_region_list = survey_region_list
+#prediction_region_list = missing_region_list
+prediction_region_list = high_frequenncy_region_list
+#
+df_survey = df[df$dataType=='SURVEY',]
+df_survey = df_survey[order(df_survey$region, df_survey$Datetime),]
+
+df_loc_survey = df_loc[df_loc$region%in%survey_region_list,]
+df_loc_survey = df_loc_survey[order(df_loc_survey$region),]
+
+
+df_training = df[df$region%in%training_region_list,]
+df_training = df_training[order(df_training$region, df_training$Datetime),]
+
+df_loc_training = df_loc[df_loc$region%in%training_region_list,]
+df_loc_training = df_loc_training[order(df_loc_training$region),]
+
+##
+
+df_prediction = df[df$region%in%prediction_region_list,]
+df_prediction = df_prediction[order(df_prediction$region, df_prediction$Datetime),]
+
+df_loc_prediction = df_loc[df_loc$region%in%prediction_region_list,]
+df_loc_prediction = df_loc_prediction[order(df_loc_prediction$region),]
+
+```
+
+
+Prepare data
+```{r}
+N1 = dim(df_loc_training)[1]
+n1 = dim(df_loc_prediction)[1]
+N2 = dim(df_training)[1]/N1
+n2 = N2
+X1 = df_loc_training[,c('Easting','Northing')]/10000
+x1_new = df_loc_prediction[,c('Easting','Northing')]/10000
+X2 = matrix(1:N2, N2, 1)
+x2_new = X2
+#X3 = matrix(df_training$log_rolling_sum_fatalities, (N1*N2),1)
+#x3_new = matrix(df_prediction$log_rolling_sum_fatalities, (n1*n2),1)
+
+y = df_training$FCS
+z = log(y/(1-y))
+#z = asin(sqrt(y))
+#y_new_XGboost = df_prediction$FCS
+```
+
+
+```{r}
+kernel =  paste0(stan_path,'kernel_exploration/exp_exp_cent_re1/') 
+stan_file = paste0(kernel,'GPst_est_rhofixed.stan')
+#stan_file = paste0(kernel,'GPst_est.stan')
+mod = cmdstan_model(stan_file,  include_paths = stan_path)
+stan_file = paste0(kernel,'GPst_pred.stan')
+mod_pred = cmdstan_model(stan_file,  include_paths = stan_path)
+params = c('alpha0','alpha1','alpha2','sigma','sigma1')
+#params = c('alpha0','alpha1','alpha2','sigma','sigma1','rho1','rho2')
+data = list(N1 = N1, N2 = N2, X1 = X1, X2 = X2, y = z, Hurst2 = 0.5, rho1 = 30, rho2=N2)
+```
+
+```{r}
+#fit_mmle = mod$optimize(data=data)
+init_param = list(
+  list(
+    alpha0=1,alpha1=1,alpha2=1,
+    sigma=1,sigma1=1,rho1=30,rho2=100
+  )
+) 
+init_param = list(
+  list(
+    alpha0=1,alpha1=1,alpha2=1,
+    sigma=1,sigma1=1,rho2=100
+  )
+) 
+fit_mmle = mod$optimize(data=data, init = init_param)
+post_mean = fit_mmle$mle()
+post_mean
+```
+
+
+
+```{r}
+fit = mod$sample(
+  data = data, 
+  #seed = 725, 
+  #seed = 3283,
+  #seed = 291,#rho_fixed
+  seed = 932,
+  iter_warmup = 200,
+  iter_sampling = 300,
+  save_warmup = TRUE,
+  chains = 2, 
+  parallel_chains = 2,
+  refresh = 20
+)
+#fit$save_output_files(dir = paste0(base_path,"Output"), basename = paste0('training_', country), timestamp = TRUE, random = TRUE)
+```
+
+```{r}
+post_mean = fit$summary(variables = params)$mean
+names(post_mean) = params
+fit$summary(variables = append(params, 'lp__'))
+# 0.080259244 4.229308550 0.007057177 0.002890826 0.162756242
+```
+
+```{r}
+post_samples = fit$draws(format = "df",  inc_warmup = F)
+post_samples$chain = as.character(post_samples$.chain)
+for (param in params){
+  gg = ggplot(data=post_samples, aes_string(x=".iteration", y = param, color="chain"))+
+  geom_line() + theme_minimal() 
+  print(gg)
+}
+for (param in params){
+  gg = ggplot(data=post_samples, aes_string(x=param,color="chain", fill="chain"))+
+  geom_histogram(alpha=0.5, position="identity") + theme_minimal() 
+  print(gg)
+}
+```
+
+
+```{r}
+#post_mean = c(0.02,4.18,0.05,0.035, 0.6);names(post_mean) = params
+data_pred = list(N1 = N1, N2 = N2, 
+            X1 = X1, X2 = X2,
+            y = z,
+            n1 = n1, n2 = n2,
+            x1_new = x1_new,  x2_new = x2_new, 
+            alpha0 = post_mean['alpha0'],
+            alpha1 = post_mean['alpha1'],
+            alpha2 = post_mean['alpha2'],
+            sigma1 = post_mean['sigma1'],
+            sigma = post_mean['sigma'],
+            rho1 = 30,
+            rho2 = N2,
+            Hurst2=0.5
+            )
+pred = mod_pred$sample(
+  data = data_pred, 
+  iter_warmup = 0,
+  iter_sampling = 1000,
+  chains = 1, 
+  refresh = 100,
+  fixed_param = TRUE)
+  #pred$save_output_files(dir = paste0(base_path,"Output"), basename = paste0('fcst_se_',country), timestamp = TRUE, random = TRUE)
+  post_z_samples = pred$draws(format = "df",  inc_warmup = F)
+  #hist(colMeans(post_z_samples), breaks = 20)
+  post_y_samples = 1/(1+exp(-post_z_samples[,1:(n1*n2)]))
+  #post_y_samples = sin(post_z_samples[,1:(n1*n2)])^2
+  #post_y_samples = pred$draws(format = "df",  inc_warmup = F)
+  #post_y_samples=post_y_samples[,1:(n1*n2)]
+  df_pred = as.data.frame(matrix(NA, n1*n2,0))
+  df_pred$y_hat = colMeans(post_y_samples)
+  df_pred$y_true = df_prediction$FCS
+  df_pred$z_hat = colMeans(post_z_samples[,1:(n1*n2)])
+  df_pred$z_true = asin(sqrt(df_prediction$FCS))
+  df_pred$y_residual = df_pred$y_hat - df_pred$y_true
+  df_pred$region = rep(df_loc_prediction$region, each = n2)
+  df_pred$Datetime = rep(as.Date(df_prediction$Datetime[1:n2], tz='GMT'), times=n1)
+```
+```{r}
+# write.csv(df_pred,paste0(base_path,'Output/post_mean_survey_regions_', country,'.csv'))
+# post_yz_samples = cbind(post_y_samples, post_z_samples[,(n1*n2+1):dim(post_z_samples)[2]])
+# write.csv(post_yz_samples,paste0(base_path,'Output/post_samples_survey_regions_', country,'.csv'),row.names=FALSE)
+#df_pred = read.csv(paste0(base_path,'Output/post_mean_survey_regions_', country,'.csv'), header = TRUE)
+#post_yz_samples = read.csv(paste0(base_path,'Output/post_samples_survey_regions_', country,'.csv'))
+#post_y_samples = post_yz_samples[,1:(n1*n2)]
+```
+
+```{r}
+#write.csv(df_pred,paste0(base_path,'Output/post_mean_test_regions_', country,'.csv'))
+#post_yz_samples = cbind(post_y_samples, post_z_samples[,(n1*n2+1):dim(post_z_samples)[2]])
+#write.csv(post_yz_samples,paste0(base_path,'Output/post_samples_test_regions_', country,'.csv'),row.names=FALSE)
+```
+
+```{r}
+write.csv(df_pred,paste0(base_path,'Output/post_mean_highfreq_regions_', country,'.csv'))
+post_yz_samples = cbind(post_y_samples, post_z_samples[,(n1*n2+1):dim(post_z_samples)[2]])
+write.csv(post_yz_samples,paste0(base_path,'Output/post_samples_highfreq_regions_', country,'.csv'),row.names=FALSE)
+```
+
+
+```{r}
+y_min = min(min(df_pred$y_true), min(df_pred$y_hat))
+y_max = max(max(df_pred$y_true), max(df_pred$y_hat))
+gg_true = ggplot(df_pred, aes(x=Datetime,y=y_true,color=region)) + geom_line() + ylim(y_min,y_max)  +    theme_minimal(base_size = 14) +
+    ylab('True FCS') +  theme(axis.title.x=element_blank())
+
+gg_true
+gg_pred = ggplot(df_pred, aes(x=Datetime,y=y_hat,color=region)) + geom_line() + ylim(y_min,y_max)  +
+        theme_minimal(base_size = 14) + 
+  ylab('Posterior mean FCS') +  theme(axis.title.x=element_blank())
+gg_pred
+```
+
+
+```{r}
+## some more effects need to be added ... random walk / Brownian motion error?
+gg = ggplot(df_pred,aes(x=y_true,y=y_residual,color=region)) + geom_point() + theme_minimal(base_size = 14)
+gg
+gg = ggplot(df_pred,aes(x=Datetime,y=y_residual,color=region)) + geom_line() + theme_minimal(base_size = 14)
+gg
+## Need to 
+```
+```{r}
+df_plot_cb = df_pred
+df_plot_cb$low = NA
+df_plot_cb$high = NA
+
+for (i in 1:length(prediction_region_list)){
+  df_plot_cb[df_plot_cb$region==prediction_region_list[i],c('low','high')] = t(apply(post_y_samples[,c(((i-1)*n2 + 1):(i*n2))],2, quantile,probs=c(0.025,0.975)))
+}
+#regions_to_plot = c("Akwa Ibom", "Kano")
+regions_to_plot = prediction_region_list
+line_types = c('True'=1,'Posterior mean'=2)
+gg = ggplot(data = df_plot_cb[df_plot_cb$region%in%regions_to_plot,], aes(x=Datetime)) + 
+  geom_line(aes(y=y_true, color=region,linetype='True')) + 
+  geom_line(aes(y=y_hat, color=region, linetype='Posterior mean'), alpha=0.8)+
+  geom_ribbon(aes(ymin=low, ymax=high, color=region), alpha=0.2, fill='grey',linetype=3)+
+  facet_wrap(~ region)+
+  #geom_vline(xintercept = date_th,linetype=4) +
+  #xlim(as.Date('2022-01-01'),as.Date(df$Datetime[N2])) +  
+  #ylim(y_min,y_max) +
+  ylab("FCS") + xlab(NULL)+
+   scale_linetype_manual(name=NULL,values=line_types)+
+  #scale_linetype_manual(name='type',values = c('y_true'='solid','y_hat'='dashed'))+
+  theme_minimal() +theme(axis.text.x = element_text(angle = 45))
+gg
+```
+```{r}
+df_plot_cb = df_pred
+df_plot_cb$low = NA
+df_plot_cb$high = NA
+
+for (i in 1:length(missing_region_list)){
+  df_plot_cb[df_plot_cb$region==missing_region_list[i],c('low','high')] = t(apply(post_y_samples[,c(((i-1)*n2 + 1):(i*n2))],2, quantile,probs=c(0.025,0.975)))
+}
+#regions_to_plot = c("Akwa Ibom", "Kano")
+regions_to_plot = missing_region_list
+line_types = c('XGBoost'=1,'Posterior mean'=2)
+gg = ggplot(data = df_plot_cb[df_plot_cb$region%in%regions_to_plot,], aes(x=Datetime)) + 
+  geom_line(aes(y=y_true, color=region,linetype='XGBoost')) + 
+  geom_line(aes(y=y_hat, color=region, linetype='Posterior mean'), alpha=0.8)+
+  geom_ribbon(aes(ymin=low, ymax=high, color=region), alpha=0.2, fill='grey',linetype=3)+
+  facet_wrap(~ region)+
+  #geom_vline(xintercept = date_th,linetype=4) +
+  #xlim(as.Date('2022-01-01'),as.Date(df$Datetime[N2])) +  
+  #ylim(y_min,y_max) +
+  ylab("FCS") + xlab(NULL)+
+   scale_linetype_manual(name=NULL,values=line_types)+
+  #scale_linetype_manual(name='type',values = c('y_true'='solid','y_hat'='dashed'))+
+  theme_minimal() +theme(axis.text.x = element_text(angle = 45))
+gg
+```
+```{r}
+df_plot_cb = df_pred
+df_plot_cb$low = NA
+df_plot_cb$high = NA
+
+for (i in 1:length(high_frequenncy_region_list)){
+  df_plot_cb[df_plot_cb$region==high_frequenncy_region_list[i],c('low','high')] = t(apply(post_y_samples[,c(((i-1)*n2 + 1):(i*n2))],2, quantile,probs=c(0.025,0.975)))
+}
+#regions_to_plot = c("Akwa Ibom", "Kano")
+regions_to_plot = high_frequenncy_region_list
+line_types = c('True (30 days) mean'=1,'Posterior (90 days) mean'=2)
+gg = ggplot(data = df_plot_cb[df_plot_cb$region%in%regions_to_plot,], aes(x=Datetime)) + 
+  geom_line(aes(y=y_true, color=region,linetype='True (30 days) mean')) + 
+  geom_line(aes(y=y_hat, color=region, linetype='Posterior (90 days) mean'), alpha=0.8)+
+  geom_ribbon(aes(ymin=low, ymax=high, color=region), alpha=0.2, fill='grey',linetype=3)+
+  facet_wrap(~ region)+
+  #geom_vline(xintercept = date_th,linetype=4) +
+  #xlim(as.Date('2022-01-01'),as.Date(df$Datetime[N2])) +  
+  #ylim(y_min,y_max) +
+  ylab("FCS") + xlab(NULL)+
+   scale_linetype_manual(name=NULL,values=line_types)+
+  #scale_linetype_manual(name='type',values = c('y_true'='solid','y_hat'='dashed'))+
+  theme_minimal(base_size = 14) +theme(axis.text.x = element_text(angle = 45))
+gg
+```
+
+
+```{r}
+fig <- plot_ly(data = df_pred, x = ~Datetime, y = ~y_hat, color=~region, type = 'scatter', mode = 'lines') |> layout(yaxis = list(range=c(0,0.5)))
+fig
+fig <- plot_ly(data = df_pred, x = ~Datetime, y = ~y_true, color=~region, type = 'scatter', mode = 'lines') |> layout(yaxis = list(range=c(0,0.5)))
+fig
+
+```
+
+
+```{r}
+library(plotly)
+df_survey$z = asin(sqrt(df_survey$FCS))
+#df_survey$z = asin((df_survey$FCS))
+df_plot = df_survey[!df_survey$region%in%c('Adamawa','Borno','Yobe'),]
+fig <- plot_ly(data = df_survey, x = ~Datetime, y = ~FCS, color=~region, type = 'scatter', mode = 'lines') |> layout(yaxis = list(range=c(0,0.8)))
+fig
+```
+
+
+```{r}
+region_list_pl =sample(survey_region_list,10)
+df_plot = df_survey[df_survey$region%in%region_list_pl,]
+
+fig <- plot_ly(data = df_survey, x = ~Datetime, y = ~FCS, color=~region, type = 'scatter', mode = 'lines') |> layout(yaxis = list(range=c(0,0.8)))
+fig
+```
+```{r}
+fig <- plot_ly(data = df_survey, x = ~Datetime, y = ~n_fatalities, color=~region, type = 'scatter', mode = 'lines') 
+fig
+
+fig <- plot_ly(data = df_survey, y = ~FCS, x = ~log_rolling_sum_fatalities, color=~region, type = 'scatter') 
+fig
+```
+
+
+```{r}
+region_list_pl =c('Abia','Kogi','Benue','Enugu','Cross River','Lagos','Edo')
+df_plot = df_survey[df_survey$region%in%region_list_pl,]
+
+fig <- plot_ly(data = df_plot, x = ~Datetime, y = ~FCS, color=~region, type = 'scatter', mode = 'lines') |> layout(yaxis = list(range=c(0,0.8)))
+fig
+
+region_list_pl =c('Kogi','Lagos','Edo')
+df_plot = df_survey[df_survey$region%in%region_list_pl,]
+fig <- plot_ly(data = df_plot, x = ~Datetime, y = ~FCS, color=~region, type = 'scatter', mode = 'lines') |> layout(yaxis = list(range=c(0,0.8)))
+fig
+
+```
+```{r}
+df_pred_ebonyi = df_pred[df_pred$region%in%c('Ebonyi','Ondo'),]
+fig <- plot_ly(data = df_pred_ebonyi, x = ~Datetime, y = ~y_hat, color=~region, type = 'scatter', mode = 'lines')|> layout(yaxis = list(range=c(0,0.8)))
+fig
+fig <- plot_ly(data = df_pred_ebonyi, x = ~Datetime, y = ~y_XGB, color=~region, type = 'scatter', mode = 'lines')|> layout(yaxis = list(range=c(0,0.8)))
+fig
+
+```
+
+
+```{r}
+
+fig <- plot_ly(data = df_pred, x = ~Datetime, y = ~y_hat, color=~region, type = 'scatter', mode = 'lines')|> layout(yaxis = list(range=c(0,0.8)))
+fig
+fig <- plot_ly(data = df_pred, x = ~Datetime, y = ~y_XGB, color=~region, type = 'scatter', mode = 'lines')|> layout(yaxis = list(range=c(0,0.8)))
+fig
+
+```
+```{r}
+fig <- plot_ly(data = df_plot, x = ~n_fatalities, y = ~FCS, color=~region, type = 'scatter') 
+fig
+```
+
+
