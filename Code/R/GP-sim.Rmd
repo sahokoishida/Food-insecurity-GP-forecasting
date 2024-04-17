@@ -37,6 +37,7 @@ sigma = 1
 sigma1 = 0.5
 K1 =  (alpha1^2) * cen_gram(exp_gram(X1, rho1))
 K2 =  (alpha2^2) *sq_cen_fBM_kernel_mat(X2, Hurst2)
+#K2 =  (alpha2^2) *cen_gram(fBM_gram(X2, Hurst2))
 #K2 =  (alpha2^2) * cen_gram(exp_gram(X2, rho2))
 N = N1*N2
 #Jn1 = matrix(1,N1,N1)
@@ -105,7 +106,6 @@ mod_pred = cmdstan_model(stan_file,  include_paths = stan_path)
 params = c('alpha0','alpha1','alpha2','sigma','sigma1')
 #params = c('alpha0','alpha1','alpha2','sigma','sigma1','rho1')
 data = list(N1 = N1_tr, N2 = N2, X1 = X1_tr, X2 = X2, y = y_tr, Hurst2 = 0.5, rho1 = 6)
-
 ```
 
 ```{r}

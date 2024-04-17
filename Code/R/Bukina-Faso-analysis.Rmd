@@ -1,0 +1,152 @@
+---
+title: "Burkina-Faso Analysis"
+author: "Sahoko Ishida"
+date: "4/15/2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+Load libraries and set up paths
+```{r}
+library(cmdstanr)
+library(rstan)
+library(ggmcmc)
+library(ggplot2)
+library(plotly)
+library(lubridate)
+library(readxl)
+library(zoo)
+
+```
+
+```{r}
+base_path = '/Users/sahoko/GitHub/Food-insecurity-GP-forecasting/'
+stan_path = paste0(base_path, 'Code/Stan/')
+data_path = paste0(base_path, 'Data/Foini2023/')
+data_path2 = paste0(base_path, 'Data/New/')
+```
+## Read and prepare data
+Some funcitons
+```{r}
+df_wide_to_long = function(df,var_ts,var_id,var_name){
+  n.regions = ncol(df)-1
+  n.row = nrow(df)
+  cnames = colnames(df)[-1]
+  ts = df[var_ts][[1]]
+  data.to.melt = as.matrix(df[,!names(df)%in%c(var_ts)])
+  df.out = as.data.frame(rep(ts, times=n.regions)); colnames(df.out) = var_ts;
+  df.out[var_id] = rep(cnames, each = n.row)
+  df.out[var_name] = c(data.to.melt)
+  return(df.out)
+}
+df_read_excel = function(file_path, sheet_name, region.list, n.regions, type.daily=FALSE){
+  df.date = read_excel(file_path, sheet=sheet_name,range = cell_limits(c(3,1), c(NA,1)))
+  tmp = read_excel(file_path, sheet=sheet_name,range = cell_limits(c(1,2), c(1,NA)))
+  var_names = colnames(tmp)[seq(1,dim(tmp)[2], by=n.regions)]
+  rm(tmp)
+  if (type.daily == TRUE){
+    df.out = as.data.frame(rep(df.date$date, times=n.regions)); colnames(df.out) = 'date'
+    df.out['adm1_code'] = rep(region.list,each=length(df.date$date))
+    for (i in 1:length(var_names)){
+      var = var_names[i]
+      df.tmp = read_excel(file_path, sheet=sheet_name,range = cell_limits(c(2,1+(i-1)*n.regions+1), c(NA,(1+i*n.regions))))
+      df.tmp = df.tmp[-1,]
+      df.tmp.locf = apply(df.tmp[,-1], 2, na.locf)
+      df.out[var] = c(as.matrix(df.tmp.locf))
+    }
+  } else {
+    min.date = min(df.date$date); max.date = max(df.date$date)
+    date_seq = seq(min.date, max.date, by = 'day')
+    df.date.seq = as.data.frame(date_seq); colnames(df.date.seq) = c('date')
+    df.out = as.data.frame(rep(date_seq, times=n.regions)); colnames(df.out) = 'date'
+    df.out['adm1_code'] = rep(region.list,each=length(date_seq))
+    for (i in 1:length(var_names)){
+      var = var_names[i]
+      var_spline = paste(var,'spline',sep='_')
+      df.tmp = read_excel(file_path, sheet=sheet_name,range = cell_limits(c(2,1+(i-1)*n.regions+1), c(NA,(1+i*n.regions))))
+      df.tmp = df.tmp[-1,]
+      df.tmp = cbind(df.date,df.tmp)
+      df.tmp = merge(df.date.seq,df.tmp, by = 'date', all.x=TRUE)
+      df.tmp.spline = apply(df.tmp[,-1], 2, na.spline)
+      df.out[var] = c(as.matrix(df.tmp[,-1]))
+      df.out[var_spline] = c(as.matrix(df.tmp.spline))
+    }
+  }
+  return(df.out)
+}
+df_read_excel_acled = function(file_path, sheet_name){
+  df.date = read_excel(file_path, sheet=sheet_name,range = cell_limits(c(3,1), c(NA,1)))
+  n.rows = nrow(df.date)
+  cnames = array(read_excel(file_path, sheet = sheet_name,  col_names = FALSE, range = cell_limits(c(1,1),c(2,NA)))) 
+  cname1 = unname(c(as.matrix(cnames[1,]))); cname2 = unname(c(as.matrix(cnames[2,])))
+  var_names = unique(cname1[-1])
+  region.list = unique(cname2[-1]); n.regions = length(region.list)
+  df.out = as.data.frame(rep(df.date$date, times=n.regions)); colnames(df.out) = 'date'
+  df.out['adm1_code'] = rep(region.list,each=length(df.date$date))
+  df.tmp = as.data.frame(read_excel(file_path, sheet=sheet_name,range = cell_limits(c(4,1),c(NA,NA)), col_names=F))
+  colnames(df.tmp) = cname2
+  for (i in 1:length(var_names)){
+    var = var_names[i]
+    colix = which(cname1==var)
+    df.tmp.var = df.tmp[,colix]
+    df.out[var] = c(as.matrix(df.tmp.var))
+  }
+  return(df.out)
+}
+df_cov_read = function(file_path, sheet_name,date_lower){
+  df = read_excel(file, sheet =sheet_name,skip=2)
+  colnames(df) = c('Datetime',sheet_name)
+  df = df[df$Datetime>=as.POSIXct(date_lower, tz='GMT'),]
+  return(df)
+}
+```
+
+
+Read main (FCS) data
+```{r}
+#country_list = list.files(path = paste0(data_path,'output_data/'))
+#print(country_list)
+# select country
+country = "Burkina-Faso" 
+iso3 = 'BFA'
+file_main = paste(data_path2,'WFP','data_africa',paste0(iso3,'_data.xlsx'), sep="/")
+#df.admn1code = read.csv(paste(data_path2,'WFP','data_africa','adm0_adm1_code_info.csv', sep='/'),header = TRUE)
+df.admn1code.bfa = read.csv(paste(data_path2,'output_data','Burkina-Faso/Burkina-Faso-regionid.csv',sep='/'), header=TRUE)
+colnames(df.admn1code.bfa)[1] = 'adm1_code'
+n.region = nrow(df.admn1code)
+# 1: FCS data Wide -> long
+df.date = read_excel(file_main, sheet='fcs',range = cell_limits(c(3,1), c(NA,1)))
+df.fcs = read_excel(file_main, sheet='fcs',range = cell_limits(c(2,2), c(NA,NA)))
+df.fcs = df.fcs[-1,]
+df.fcs = cbind(df.date,df.fcs)
+df.fcs.long = df_wide_to_long(df.fcs,'date','adm1_code','fcs')
+
+# 2:  covariates at regional-time series 
+df.pewi = df_read_excel(file_main,'pewi',colnames(df.fcs)[-1], 13)
+df.weather = df_read_excel(file_main,'rainfall_ndvi',colnames(df.fcs)[-1], 13)
+df.weather$rainfall_value_spline[df.weather$rainfall_value_spline<0] = 0
+df.acled = df_read_excel_acled(file_main, 'acled')
+# 3: covariates at national-time series
+
+# 4 covariates regional (static) 
+
+file=paste(data_path2,'WFP','data_africa',paste0(iso3,'_data.xlsx') sep="/")
+file = paste0(data_path2,'output_data/', country,'/',country,'-long.csv')
+df = read.csv(file, header = TRUE)
+file = paste0(data_path,'output_data/', country,'/',country,'-location.csv')
+df_loc = read.csv(file, header = TRUE)
+df_loc$region[df_loc$region=='Nasarawa']="Nassarawa"
+df$Datetime = as.POSIXct(df$Datetime, tz='GMT')
+region_list = df_loc$region
+#remove the first 29 days
+df = na.omit(df)
+dim(df)
+#limit to the end of 2023
+df = df[df$Datetime < as.POSIXct('2024-01-01', tz='GMT'),]
+date.max = sort(unique(df$Datetime)) |> max()
+date.min = sort(unique(df$Datetime)) |> min()  
+```
