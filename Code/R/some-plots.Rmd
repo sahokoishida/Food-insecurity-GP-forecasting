@@ -1,0 +1,108 @@
+---
+title: "Untitled"
+author: "Sahoko"
+date: "11/17/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+```{r}
+for (region in region_list){
+  yy <- df$FCS[df$region == region]
+  yy <- log(yy/(100-yy))
+  ee <- lm(yy ~ c(1:length(yy)))$residuals
+  kk <- na.omit(diff(ee))
+  zz <- na.omit(diff(kk, lag = 31))
+  plot.ts(ee, main = paste(region, " origin")) 
+  acf(ee, main = paste(region), lag.max = 60)
+  acf(kk, main = paste(region, " lag 1 diff"), lag.max = 100)
+  acf(zz, main = paste(region, " lag 30 diff"), lag.max = 100)
+}
+```
+```{r}
+#library(ggplot2)
+reg = region_list[20]
+gg = ggplot(df[df$region==reg,], aes(x=Datetime,y=FCS)) + geom_line() + 
+  geom_vline(xintercept = seq(from = as.Date('2018-08-01'), to = as.Date('2022-04-30'), by = '1 month')) +
+  xlim(as.Date('2019-07-01') , as.Date('2020-07-01')) +
+  theme_minimal()
+gg
+gg = ggplot(df[df$region==reg,], aes(x=Datetime,y=FCS)) + geom_line() + 
+  geom_vline(xintercept = seq(from = as.Date('2018-08-01'), to = as.Date('2022-04-30'), by = '1 month')) +
+  xlim(as.Date('2020-07-01') , as.Date('2021-07-01')) +
+  theme_minimal()
+gg
+gg = ggplot(df[df$region==reg,], aes(x=Datetime,y=FCS)) + geom_line() + 
+  geom_vline(xintercept = seq(from = as.Date('2018-08-01'), to = as.Date('2022-04-30'), by = '1 month')) +
+  xlim(as.Date('2021-07-01') , as.Date('2022-07-01')) +
+  theme_minimal()
+gg
+
+```
+
+```{r}
+#library(ggplot2)
+reg = region_list[16:20]
+gg = ggplot(df[df$region%in%reg,], aes(x=Datetime,y=FCS, color=region)) + geom_line() + 
+  geom_vline(xintercept = seq(from = as.Date('2018-08-01'), to = as.Date('2022-04-30'), by = '1 month')) +
+  xlim(as.Date('2019-07-01') , as.Date('2020-07-01')) +
+  theme_minimal()
+gg
+gg = ggplot(df[df$region%in%reg,], aes(x=Datetime,y=FCS,color=region)) + geom_line() + 
+  geom_vline(xintercept = seq(from = as.Date('2018-08-01'), to = as.Date('2022-04-30'), by = '1 month')) +
+  xlim(as.Date('2020-07-01') , as.Date('2021-07-01')) +
+  theme_minimal()
+gg
+gg = ggplot(df[df$region%in%reg,], aes(x=Datetime,y=FCS,color=region)) + geom_line() + 
+  geom_vline(xintercept = seq(from = as.Date('2018-08-01'), to = as.Date('2022-04-30'), by = '1 month')) +
+  xlim(as.Date('2021-07-01') , as.Date('2022-07-01')) +
+  theme_minimal()
+gg
+
+```
+```{r}
+#library(ggplot2)
+reg = region_list[16:20]
+gg = ggplot(df[df$region%in%reg,], aes(x=Datetime,y=Fatalities, color=region)) + geom_line() + 
+  geom_vline(xintercept = seq(from = as.Date('2018-08-01'), to = as.Date('2022-04-30'), by = '1 month')) +
+  xlim(as.Date('2019-07-01') , as.Date('2020-07-01')) +
+  theme_minimal()
+gg
+gg = ggplot(df[df$region%in%reg,], aes(x=Datetime,y=Fatalities,color=region)) + geom_line() + 
+  geom_vline(xintercept = seq(from = as.Date('2018-08-01'), to = as.Date('2022-04-30'), by = '1 month')) +
+  xlim(as.Date('2020-07-01') , as.Date('2021-07-01')) +
+  theme_minimal()
+gg
+gg = ggplot(df[df$region%in%reg,], aes(x=Datetime,y=Fatalities,color=region)) + geom_line() + 
+  geom_vline(xintercept = seq(from = as.Date('2018-08-01'), to = as.Date('2022-04-30'), by = '1 month')) +
+  xlim(as.Date('2021-07-01') , as.Date('2022-07-01')) +
+  theme_minimal()
+gg
+
+```
+```{r}
+#library(ggplot2)
+reg = region_list[6:10]
+gg = ggplot(df[df$region%in%reg,], aes(x=Datetime,y=FCS, color=region)) + geom_line() + 
+  geom_vline(xintercept = seq(from = as.Date('2021-05-01'), to = as.Date('2022-04-30'), by = '1 month')) +
+  theme_minimal()
+gg
+reg = region_list[6:10]
+gg = ggplot(df[df$region%in%reg,], aes(x=Datetime,y=Fatalities, color=region)) + geom_line() + 
+  geom_vline(xintercept = seq(from = as.Date('2021-05-01'), to = as.Date('2022-04-30'), by = '1 month')) +
+  theme_minimal()
+gg
+```
+
+```{r}
+gg = ggplot(df, aes(x=FCS,y=log(Fatalities),color=region)) + geom_point()+theme_minimal()
+gg
+
+gg = ggplot(df, aes(x=FCS,y=Rainfalls..mm.,color=region)) + geom_point()+theme_minimal()
+gg
+```
+

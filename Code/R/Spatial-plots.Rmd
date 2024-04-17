@@ -1,0 +1,220 @@
+---
+title: "Plots"
+author: "Sahoko"
+date: "11/20/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+path0 <- "~/GitHub/Additive-GP-for-SpatioTemporal-Analysis/"
+path1 <- "~/GitHub/Additive-GP-for-SpatioTemporal-Analysis/Code/Stan"
+library(rgdal)
+library(rgeos)
+library(maps)
+library(mapdata)
+library(maptools)
+library(rgdal)
+#library(ggmap)
+library(ggplot2)
+library(rgeos)
+library(broom)
+library(plyr)
+#library(cmdstanr)
+#library(ggmcmc)
+library(dplyr)
+#library(kernlab)
+library(tmap)
+```
+
+```{r}
+base_path = '/Users/sahoko/GitHub/Food-insecurity-GP-forecasting/'
+stan_path = paste0(base_path, 'Code/Stan/')
+data_path = paste0(base_path, 'Data/Foini2023/')
+```
+## Read and prepare data
+Read data
+```{r}
+country_list = list.files(path = paste0(data_path,'output_data/'))
+print(country_list)
+# select country
+country = country_list[7]
+print(country)
+file = paste0(data_path,'output_data/', country,'/',country,'-long.csv')
+df = read.csv(file, header = TRUE)
+file = paste0(data_path,'output_data/', country,'/',country,'-location.csv')
+df_loc = read.csv(file, header = TRUE)
+df$Datetime = as.Date(df$Datetime, tz='GMT')
+colnames(df)[colnames(df)=='FCG'] = 'FCS'
+region_list = df_loc$region
+```
+
+```{r}
+startday = df$Datetime[1]
+startday
+endday = df$Datetime[length(df$Datetime)]
+#startday = seq(endday, length = 2, by = "-12 months")[2]+1
+#df = df[df$Datetime>=startday & df$Datetime<=endday,]
+#seq(from=as.Date('2019-09-01'), to=endday, by ='1 month') -1
+
+```
+
+```{r}
+dat = aggregate(df$FCS, list(df$region), FUN=mean); colnames(dat)=c('region','Mean.FCS')
+aggregate(df$FCS, list(df$region), FUN=mean)[,2]
+startdays = seq(from=as.Date('2019-09-01'), to=endday, by ='1 month') 
+enddays = seq(from=as.Date('2019-10-01'), to=as.Date('2022-5-01'), by ='1 month') -1
+n_month = length(startdays)
+month_means = data.frame(matrix(NA, nrow=length(region_list),ncol=n_month))
+month_names = format(seq.Date(as.Date('2019-09-01'), by = 'month', len = n_month), "%B %Y")
+colnames(month_means) = month_names
+for (i in 1:n_month){
+  df.tmp = df[(df$Datetime>=startdays[i] & df$Datetime<=enddays[i]),]
+  month_means[,month_names[i]] = aggregate(df.tmp$FCS, list(df.tmp$region), FUN=mean)[,2]
+}
+dat = cbind(dat,month_means)
+# dat$region[1] = 'Boucle du Mouhoun' For BF
+min(month_means);max(month_means)
+```
+Shape files
+```{r}
+shape_BF <- readOGR('/Users/sahoko/GitHub/Food-insecurity-GP-forecasting/Data/shapefiles/bfa_adm_igb_20200323_shp', layer='bfa_admbnda_adm1_igb_20200323')
+shape_BF@data <- left_join(shape_BF@data, dat, by = c('ADM1_FR' = 'region'))
+```
+Yemen
+
+```{r}
+rm(shape_YEM,shape_YEM_rm,dat)
+```
+
+```{r}
+dat = aggregate(df$FCS, list(df$region), FUN=mean); colnames(dat)=c('region','Mean.FCS')
+aggregate(df$FCS, list(df$region), FUN=mean)[,2]
+startdays = seq(from=as.Date('2018-08-01'), to=endday, by ='1 month') 
+enddays = seq(from=as.Date('2018-09-01'), to=as.Date('2022-5-01'), by ='1 month') -1
+n_month = length(startdays)
+month_means = data.frame(matrix(NA, nrow=length(region_list),ncol=n_month))
+month_names = format(seq.Date(as.Date('2018-08-01'), by = 'month', len = n_month), "%B %Y")
+colnames(month_means) = month_names
+for (i in 1:n_month){
+  df.tmp = df[(df$Datetime>=startdays[i] & df$Datetime<=enddays[i]),]
+  month_means[,month_names[i]] = aggregate(df.tmp$FCS, list(df.tmp$region), FUN=mean)[,2]
+}
+dat = cbind(dat,month_means)
+min(month_means);max(month_means)
+
+```
+
+```{r}
+shape_YEM <- readOGR('/Users/sahoko/GitHub/Food-insecurity-GP-forecasting/Data/shapefiles/Yemen', layer='yem_admbnda_adm1_govyem_cso_20191002')
+shape_YEM_rm = shape_YEM[shape_YEM$ADM1_EN!="Socotra",]
+```
+
+```{r}
+# tmp = shape_YEM@data
+# tmp$ADM1_EN[tmp$ADM1_EN%in%region_list==F]
+# region_list[region_list%in%tmp$ADM1_EN==F]
+# region_list # length 20
+#tmp$ADM1_EN # length 22
+# difference
+# no Hadramawt --> data not available
+# no Socotra --> data not available (on island)
+# Look up
+# region_list | ADM1_EN
+# Taizz       | Ta'iz
+# Al Hudaydah | Al Hodeidah
+# Sa'ada      | Sa'dah
+# Marib       | Ma'rib
+# Al Dhale'e  | Ad Dali'
+# Amanat Al Asimah | Sana'a city
+before_region_list = c('Taizz',"Al Hudaydah","Sa'ada" ,'Marib',"Al Dhale'e","Amanat Al Asimah")
+after_region_list = c("Ta'iz","Al Hodeidah","Sa'dah","Ma'rib","Ad Dali'","Sana'a City")
+for (i in 1:length(before_region_list)){
+  dat$region[dat$region==before_region_list[i]] = after_region_list[i] 
+}
+dat = rbind(dat,c("Hadramawt",rep(NA,n_month+1)))
+for (i in 2:(n_month+2)){
+  dat[,i] = as.numeric(dat[,i])
+}
+```
+
+```{r}
+shape_YEM_rm@data <- left_join(shape_YEM_rm@data, dat, by = c('ADM1_EN' = 'region'))
+```
+
+```{r}
+qtm(shape_YEM_rm, 'Mean.FCS', fill.style="fixed",fill.breaks=seq(10,100,by=10),text.scale = 10)
+qtm(shape_YEM_rm, 'Mean.FCS', text.scale = 10)
+```
+
+
+```{r}
+for (i in seq(1,n_month,by=2)){
+  qq = qtm(shape_YEM_rm, month_names[i], fill.style="fixed", fill.breaks=seq(10,75,by=5))
+  print(qq)
+}
+```
+
+
+
+
+
+
+```{r}
+qtm(shape_BF, 'Mean.FCS', fill.style="fixed",fill.breaks=seq(10,100,by=10),text.scale = 10)
+qtm(shape_BF, 'Mean.FCS', text.scale = 10)
+```
+
+
+```{r}
+gg <- ggplot() + geom_polygon(data = shape_BF, aes(x = long, y = lat, group = group),  size = 0.25)
+gg <- gg + coord_fixed(1) +#This gives the map a 1:1 aspect ratio
+  theme_minimal()
+print(gg)
+```
+
+
+```{r}
+for (i in seq(1,n_month,by=3)){
+  qq = qtm(shape_BF, month_names[i], fill.style="fixed", fill.breaks=seq(10,100,by=10))
+  print(qq)
+}
+```
+```{r}
+dat = aggregate(df$Fatalities, list(df$region), FUN=mean, na.rm=TRUE)
+colnames(dat)=c('region','Mean.Fatalities')
+dat$Mean.Fatalities = log(dat$Mean.Fatalities+1)
+month_means = data.frame(matrix(NA, nrow=length(region_list),ncol=n_month))
+month_names = format(seq.Date(as.Date('2019-09-01'), by = 'month', len = n_month), "%B %Y")
+colnames(month_means) = month_names
+for (i in 1:n_month){
+  df.tmp = df[(df$Datetime>=startdays[i] & df$Datetime<=enddays[i]),]
+  month_means[,month_names[i]] = aggregate(df.tmp$Fatalities, list(df.tmp$region), 
+                                           FUN=mean, na.rm=TRUE)[,2]
+}
+dat = cbind(dat,log(month_means+1))
+dat$region[1] = 'Boucle du Mouhoun'
+min(dat[,2:34]);max(dat[,2:34])
+```
+
+Shape files
+```{r}
+shape_BF <- readOGR('/Users/sahoko/GitHub/Food-insecurity-GP-forecasting/Data/shapefiles/bfa_adm_igb_20200323_shp', layer='bfa_admbnda_adm1_igb_20200323')
+shape_BF@data <- left_join(shape_BF@data, dat, by = c('ADM1_FR' = 'region'))
+```
+
+```{r}
+qtm(shape_BF, 'Mean.Fatalities',text.scale = 10,fill.style="fixed", fill.breaks=seq(0,7,by=1))
+```
+
+```{r}
+for (i in seq(1,n_month,by=3)){
+  qq = qtm(shape_BF, month_names[i], fill.style="fixed", fill.breaks=seq(0,7,by=1))
+  print(qq)
+}
+```
