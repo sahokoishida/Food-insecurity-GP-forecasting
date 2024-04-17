@@ -1,0 +1,248 @@
+"iso3","adm0_code","adm0_name","adm1_code","adm1_name"
+BEN,29,Benin,"609",Alibori
+BEN,29,Benin,"610",Atakora
+BEN,29,Benin,"611",Atlantique
+BEN,29,Benin,"612",Borgou
+BEN,29,Benin,"613",Collines
+BEN,29,Benin,"614",Couffo
+BEN,29,Benin,"615",Donga
+BEN,29,Benin,"616",Littoral
+BEN,29,Benin,"617",Mono
+BEN,29,Benin,"618",Oueme
+BEN,29,Benin,"619",Plateau
+BEN,29,Benin,"620",Zou
+BFA,42,Burkina Faso,"40276",Boucle Du Mouhoun
+BFA,42,Burkina Faso,"40277",Cascades
+BFA,42,Burkina Faso,"40278",Centre
+BFA,42,Burkina Faso,"40279",Centre-est
+BFA,42,Burkina Faso,"40280",Centre-nord
+BFA,42,Burkina Faso,"40281",Centre-ouest
+BFA,42,Burkina Faso,"40282",Centre-sud
+BFA,42,Burkina Faso,"40283",Est
+BFA,42,Burkina Faso,"40284",Hauts-bassins
+BFA,42,Burkina Faso,"40285",Nord
+BFA,42,Burkina Faso,"40286",Plateau Central
+BFA,42,Burkina Faso,"40287",Sahel
+BFA,42,Burkina Faso,"40288",Sud-ouest
+CMR,45,Cameroon,"815",Adamaoua
+CMR,45,Cameroon,"816",Centre
+CMR,45,Cameroon,"817",Est
+CMR,45,Cameroon,"818",ExtrÃªme - Nord
+CMR,45,Cameroon,"819",Littoral
+CMR,45,Cameroon,"820",Nord
+CMR,45,Cameroon,"821",Nord - Ouest
+CMR,45,Cameroon,"822",Ouest
+CMR,45,Cameroon,"823",Sud
+CMR,45,Cameroon,"824",Sud - Ouest
+CAF,49,Central African Republic,"67154",Bangui
+CAF,49,Central African Republic,"853",Bamingui-Bangoran
+CAF,49,Central African Republic,"854",Basse-Kotto
+CAF,49,Central African Republic,"855",Haut-Mbomou
+CAF,49,Central African Republic,"856",Haute-Kotto
+CAF,49,Central African Republic,"857",KÃ©mo
+CAF,49,Central African Republic,"858",Lobaye
+CAF,49,Central African Republic,"859",MambÃ©rÃ©-KadÃ©Ã¯
+CAF,49,Central African Republic,"860",Mbomou
+CAF,49,Central African Republic,"861",Nana-Gribizi
+CAF,49,Central African Republic,"862",Nana-MambÃ©rÃ©
+CAF,49,Central African Republic,"863",Ombella M'Poko
+CAF,49,Central African Republic,"864",Ouaka
+CAF,49,Central African Republic,"865",Ouham
+CAF,49,Central African Republic,"866",Ouham PendÃ©
+CAF,49,Central African Republic,"867",Sangha-MbaÃ©rÃ©
+CAF,49,Central African Republic,"868",Vakaga
+TCD,50,Chad,"12904",Batha Est
+TCD,50,Chad,"12905",Batha Ouest
+TCD,50,Chad,"12907",Borkou
+TCD,50,Chad,"12908",Ennedi
+TCD,50,Chad,"12909",Tibesti
+TCD,50,Chad,"12910",Baguirmi
+TCD,50,Chad,"12911",Daraba
+TCD,50,Chad,"12912",Hadjer Lamis
+TCD,50,Chad,"12914",Barl El Gazal
+TCD,50,Chad,"12915",Kanem
+TCD,50,Chad,"12918",Logone Oriental
+TCD,50,Chad,"12919",Mont De Lam
+TCD,50,Chad,"12920",Kabia
+TCD,50,Chad,"12921",Mayo-Boneye
+TCD,50,Chad,"12922",Mayo-Dala
+TCD,50,Chad,"12923",Barh Koh
+TCD,50,Chad,"12924",Lac Iro
+TCD,50,Chad,"12925",Mandoul
+TCD,50,Chad,"12926",Assongha
+TCD,50,Chad,"12927",Ouaddai
+TCD,50,Chad,"12928",Sila
+TCD,50,Chad,"12930",Tandjile Est
+TCD,50,Chad,"12931",Tandjile Ouest
+TCD,50,Chad,"870",Biltine
+TCD,50,Chad,"873",Guera
+TCD,50,Chad,"875",Lac
+TCD,50,Chad,"876",Logone Occidental
+TCD,50,Chad,"881",Salamat
+COG,59,Congo,"900002",Point-Noire
+COG,59,Congo,"900003",Brazzaville
+COG,59,Congo,"970",Bouenza
+COG,59,Congo,"971",Cuvette
+COG,59,Congo,"972",Cuvette-Ouest
+COG,59,Congo,"973",Kouilou
+COG,59,Congo,"974",Lekoumou
+COG,59,Congo,"975",Likouala
+COG,59,Congo,"976",Niari
+COG,59,Congo,"977",Plateaux
+COG,59,Congo,"978",Pool
+COG,59,Congo,"979",Sangha
+CIV,66,Côte d'Ivoire,"1040",Bas Sassandra
+CIV,66,Côte d'Ivoire,"1041",Denguele
+CIV,66,Côte d'Ivoire,"1043",Lacs
+CIV,66,Côte d'Ivoire,"1044",Lagunes
+CIV,66,Côte d'Ivoire,"1045",Sassandra-Marahoue
+CIV,66,Côte d'Ivoire,"1048",Savanes
+CIV,66,Côte d'Ivoire,"1050",Comoe
+CIV,66,Côte d'Ivoire,"1051",Vallee Du Bandama
+CIV,66,Côte d'Ivoire,"1053",Zanzan
+CIV,66,Côte d'Ivoire,"16838",District autonome de Yamoussoukro
+CIV,66,Côte d'Ivoire,"16840",GÃ´h-Djiboua
+CIV,66,Côte d'Ivoire,"16840",GÃ´h-Djiboua
+CIV,66,Côte d'Ivoire,"16845",Woroba
+CIV,66,Côte d'Ivoire,"40692",Montagnes
+CIV,66,Côte d'Ivoire,"40692",Montagnes
+CIV,66,Côte d'Ivoire,"40692",Montagnes
+CIV,66,Côte d'Ivoire,"900025",District autonome de Abidjan
+COD,68,Democratic Republic of the Congo,"1066",Bandundu
+COD,68,Democratic Republic of the Congo,"1067",Bas-Congo
+COD,68,Democratic Republic of the Congo,"1068",Equateur
+COD,68,Democratic Republic of the Congo,"1069",Kasai Occidental
+COD,68,Democratic Republic of the Congo,"1070",Kasai Oriental
+COD,68,Democratic Republic of the Congo,"1071",Katanga
+COD,68,Democratic Republic of the Congo,"1072",Kinshasa
+COD,68,Democratic Republic of the Congo,"1073",Maniema
+COD,68,Democratic Republic of the Congo,"1074",Nord-Kivu
+COD,68,Democratic Republic of the Congo,"1075",Orientale
+COD,68,Democratic Republic of the Congo,"1076",Sud-Kivu
+GMB,90,Gambia,"112869",Kanifing Municipal Council
+GMB,90,Gambia,"112869",Kanifing Municipal Council
+GMB,90,Gambia,"1285",Central River
+GMB,90,Gambia,"1287",Lower River
+GMB,90,Gambia,"1288",North Bank
+GMB,90,Gambia,"1289",Upper River
+GMB,90,Gambia,"1290",West Coast
+GHA,94,Ghana,"1324",Ashanti
+GHA,94,Ghana,"1325",Brong Ahafo
+GHA,94,Ghana,"1326",Central
+GHA,94,Ghana,"1327",Eastern
+GHA,94,Ghana,"1328",Greater Accra
+GHA,94,Ghana,"1329",Northern
+GHA,94,Ghana,"1330",Upper East
+GHA,94,Ghana,"1331",Upper West
+GHA,94,Ghana,"1332",Volta
+GHA,94,Ghana,"1333",Western
+GNB,105,Guinea-Bissau,"1385",Bafata
+GNB,105,Guinea-Bissau,"1386",Biombo
+GNB,105,Guinea-Bissau,"1387",Bolama/bijagos
+GNB,105,Guinea-Bissau,"1388",Cacheu
+GNB,105,Guinea-Bissau,"1389",Gabu
+GNB,105,Guinea-Bissau,"1390",Oio
+GNB,105,Guinea-Bissau,"1391",Quinara
+GNB,105,Guinea-Bissau,"1392",Sector Autonomo De Bissau
+GNB,105,Guinea-Bissau,"1393",Tombali
+GIN,106,Guinea,"40700",Boke
+GIN,106,Guinea,"40701",Conakry
+GIN,106,Guinea,"40702",Faranah
+GIN,106,Guinea,"40703",Kankan
+GIN,106,Guinea,"40704",Kindia
+GIN,106,Guinea,"40705",Labe
+GIN,106,Guinea,"40706",Mamou
+GIN,106,Guinea,"40707",Nzerekore
+LBR,144,Liberia,"1814",Bomi
+LBR,144,Liberia,"1815",Bong
+LBR,144,Liberia,"1816",Gbarpolu
+LBR,144,Liberia,"1817",Grand Bassa
+LBR,144,Liberia,"1818",Grand Cape Mount
+LBR,144,Liberia,"1819",Grand Gedeh
+LBR,144,Liberia,"1820",Grand Kru
+LBR,144,Liberia,"1821",Lofa
+LBR,144,Liberia,"1822",Margibi
+LBR,144,Liberia,"1823",Maryland
+LBR,144,Liberia,"1824",Montserrado
+LBR,144,Liberia,"1825",Nimba
+LBR,144,Liberia,"1826",Rivercess
+LBR,144,Liberia,"1827",River Gee
+LBR,144,Liberia,"1828",Sinoe
+MLI,155,Mali,"1926",Bamako
+MLI,155,Mali,"1927",Gao
+MLI,155,Mali,"1928",Kayes
+MLI,155,Mali,"1929",Kidal
+MLI,155,Mali,"1930",Koulikoro
+MLI,155,Mali,"1931",Mopti
+MLI,155,Mali,"1932",Segou
+MLI,155,Mali,"1933",Sikasso
+MLI,155,Mali,"1934",Tombouctou
+MRT,159,Mauritania,"2004",Adrar
+MRT,159,Mauritania,"2005",Assaba
+MRT,159,Mauritania,"2006",Brakna
+MRT,159,Mauritania,"2007",Dakhlet-Nouadhibou
+MRT,159,Mauritania,"2008",Gorgol
+MRT,159,Mauritania,"2009",Guidimakha
+MRT,159,Mauritania,"2010",Hodh Ech Chargi
+MRT,159,Mauritania,"2011",Hodh El Gharbi
+MRT,159,Mauritania,"2012",Inchiri
+MRT,159,Mauritania,"2013",Nouakchott
+MRT,159,Mauritania,"2014",Tagant
+MRT,159,Mauritania,"2015",Tiris-Zemmour
+MRT,159,Mauritania,"2016",Trarza
+NER,181,Niger,"2202",Agadez
+NER,181,Niger,"2203",Diffa
+NER,181,Niger,"2204",Dosso
+NER,181,Niger,"2205",Maradi
+NER,181,Niger,"2206",Niamey
+NER,181,Niger,"2207",Tahoua
+NER,181,Niger,"2208",Tillaberi
+NER,181,Niger,"2209",Zinder
+NGA,182,Nigeria,"2211",Adamawa
+NGA,182,Nigeria,"2212",Akwa Ibom
+NGA,182,Nigeria,"2213",Anambra
+NGA,182,Nigeria,"2215",Benue
+NGA,182,Nigeria,"2216",Borno
+NGA,182,Nigeria,"2217",Cross River
+NGA,182,Nigeria,"2218",Delta
+NGA,182,Nigeria,"2219",Edo
+NGA,182,Nigeria,"2221",Abuja
+NGA,182,Nigeria,"2222",Imo
+NGA,182,Nigeria,"2223",Jigawa
+NGA,182,Nigeria,"2224",Kaduna
+NGA,182,Nigeria,"2225",Kano
+NGA,182,Nigeria,"2226",Katsina
+NGA,182,Nigeria,"2227",Kebbi
+NGA,182,Nigeria,"2228",Kogi
+NGA,182,Nigeria,"2229",Kwara
+NGA,182,Nigeria,"2230",Lagos
+NGA,182,Nigeria,"2231",Niger
+NGA,182,Nigeria,"2232",Ogun
+NGA,182,Nigeria,"2234",Osun
+NGA,182,Nigeria,"2235",Oyo
+NGA,182,Nigeria,"2239",Taraba
+NGA,182,Nigeria,"2240",Yobe
+NGA,182,Nigeria,"65698",Abia
+NGA,182,Nigeria,"65699",Bauchi
+NGA,182,Nigeria,"65700",Bayelsa
+NGA,182,Nigeria,"65701",Ebonyi
+NGA,182,Nigeria,"65702",Ekiti
+NGA,182,Nigeria,"65703",Enugu
+NGA,182,Nigeria,"65704",Gombe
+NGA,182,Nigeria,"65705",Nassarawa
+NGA,182,Nigeria,"65706",Ondo
+NGA,182,Nigeria,"65707",Plateau
+NGA,182,Nigeria,"65708",Rivers
+NGA,182,Nigeria,"65709",Sokoto
+NGA,182,Nigeria,"65710",Zamfara
+STP,214,Sao Tome and Principe,"2620",Principe
+STP,214,Sao Tome and Principe,"2621",Sao Tome
+SLE,221,Sierra Leone,"2654",Eastern
+SLE,221,Sierra Leone,"2655",Northern
+SLE,221,Sierra Leone,"2656",Southern
+SLE,221,Sierra Leone,"2657",Western Area
+TGO,243,Togo,"2970",Centrale
+TGO,243,Togo,"2971",Kara
+TGO,243,Togo,"2972",Maritime
+TGO,243,Togo,"2973",Plateaux
+TGO,243,Togo,"2974",Savanes
