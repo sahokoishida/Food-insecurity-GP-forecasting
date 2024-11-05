@@ -115,7 +115,7 @@ generated quantities {
           matrix[N2, N2] K2 ;
           {
           matrix[N2,N2] K21 = Gram_exponential(X2, rho2);
-          K21rowsum = K22 * rep_vector(1,N2);
+          K21rowsum = K21 * rep_vector(1,N2);  // fixed
           K21 = Gram_centring(K21);
           K2 = square(alpha21)*K21 + square(alpha22)*K22;
           }
