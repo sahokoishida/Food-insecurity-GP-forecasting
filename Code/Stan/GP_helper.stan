@@ -6,12 +6,17 @@ int n_zero_eval(vector eval){
   //        n ---- a size of a matrix
   // Output: number of zero eigen values
   real d = eval[1];
-  int i = 1 ;
-  while (d < 1e-7){
+  int n = num_elements(eval);
+  int i = 1;
+  int k = 0;
+  while (d < 1e-9){
+      while(i< n){
       i += 1 ;
+      k += 1 ;
       d = eval[i];
+      }
   }
-  return i - 1 ;
+  return k ;
 }
 
 vector eval_zero(vector eval, int k){
@@ -100,6 +105,16 @@ real kernel_matern52(vector x, vector y, real rho){
   return((1+r+r/3)*exp(-r));
 }
 
+
+real kernel_fBM(vector x, vector y, real Hurst){
+  // Output k(x,y) = cov(f(x), f(y)) where k is fBM kernel with degree Hurst 
+  // Input: x, y, and Hurst coefficient 
+  real xysqdist = squared_distance(x,y);
+  real xnorm2 = dot_self(x);
+  real ynorm2 = dot_self(y);
+  return(0.5*(pow(xnorm2, Hurst) + pow(ynorm2,Hurst) - pow(xysqdist, Hurst)));
+  //return((xydist));
+}
 
 matrix Gram_SE(matrix X, real rho){
   // Output: n by n Gram matrix with squared exponential kernel
@@ -191,13 +206,13 @@ matrix Gram_fBM(matrix X, real Hurst){
     matrix[N, N] Xcp = X * X' ;
     vector[N] dvec = diagonal(Xcp);
     for (i in 1:(N-1)){
-      d[i] = pow(fabs(dvec[i]), Hurst);
+      d[i] = pow(abs(dvec[i]), Hurst);
       for (j in (i+1):N){
-        B[i,j] = pow(fabs(dvec[i] + dvec[j] - 2 * Xcp[i,j]), Hurst);
+        B[i,j] = pow(abs(dvec[i] + dvec[j] - 2 * Xcp[i,j]), Hurst);
         B[j,i] = B[i,j];
       }
     }
-    d[N] = pow(fabs(dvec[N]), Hurst);
+    d[N] = pow(abs(dvec[N]), Hurst);
     {
       matrix[N, N] E = rep_matrix(d, N);
       K = 0.5 * (E + E' - B);
@@ -226,6 +241,12 @@ matrix Gram_centring(matrix K){
     int N = rows(K);
     matrix[N, N] A = diag_matrix(rep_vector(1,N)) - (1.0/N)*rep_matrix(1, N, N);
     return A * K * A ;
+}
+
+matrix Gram_OAK(matrix K){
+    int N = rows(K);
+    vector[N] g = K*rep_vector(1,N);
+    return (K-(1/sum(g))*(g*g')) ;
 }
 
 matrix Gram_square(matrix K){
@@ -322,12 +343,21 @@ vector kvec_cen(vector kvec, vector Krowsum){
   return kvec - rep_vector(sum(kvec)/N, N) -(1.0/N)*Krowsum + rep_vector(sum(Krowsum)/square(N), N);
 }
 
+vector kvec_OAK(vector kvec, vector Krowsum){
+  return kvec - (sum(kvec)/sum(Krowsum))*Krowsum;
+}
+
 vector kvec_sq(vector kvec, matrix K){
   return K * kvec ;
 }
 
-real kstar_cen(real kstar,vector kvec, vector Krowsum,int N){
-  return kstar - 2*sum(kvec)/N + sum(Krowsum)/square(N) ;
+real kstar_cen(real kstar, vector kvec1, vector kvec2, vector Krowsum){
+  int N = num_elements(kvec1);
+  return kstar - sum(kvec1)/N  - sum(kvec2)/N + sum(Krowsum)/square(N) ;
+}
+
+real kstar_OAK(real kstar, vector kvec1, vector kvec2, vector Krowsum){
+  return kstar - sum(kvec1)*sum(kvec2)/sum(Krowsum);
 }
 
 matrix kronecker_prod(matrix A, matrix B) {
